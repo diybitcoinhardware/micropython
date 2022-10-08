@@ -113,7 +113,7 @@ endif
 
 ifneq ($(FROZEN_DIR),)
 $(info Warning: FROZEN_DIR is deprecated in favour of FROZEN_MANIFEST)
-$(BUILD)/frozen.c: $(wildcard $(FROZEN_DIR)/*) $(HEADER_BUILD) $(FROZEN_EXTRA_DEPS)
+$(BUILD)/frozen.c: $(sort $(wildcard $(FROZEN_DIR)/*)) $(HEADER_BUILD) $(FROZEN_EXTRA_DEPS)
 	$(ECHO) "GEN $@"
 	$(Q)$(MAKE_FROZEN) $(FROZEN_DIR) > $@
 endif
@@ -121,7 +121,7 @@ endif
 ifneq ($(FROZEN_MPY_DIR),)
 $(info Warning: FROZEN_MPY_DIR is deprecated in favour of FROZEN_MANIFEST)
 # make a list of all the .py files that need compiling and freezing
-FROZEN_MPY_PY_FILES := $(shell find -L $(FROZEN_MPY_DIR) -type f -name '*.py' | $(SED) -e 's=^$(FROZEN_MPY_DIR)/==')
+FROZEN_MPY_PY_FILES := $(sort $(shell find -L $(FROZEN_MPY_DIR) -type f -name '*.py' | $(SED) -e 's=^$(FROZEN_MPY_DIR)/=='))
 FROZEN_MPY_MPY_FILES := $(addprefix $(BUILD)/frozen_mpy/,$(FROZEN_MPY_PY_FILES:.py=.mpy))
 
 # to build .mpy files from .py files

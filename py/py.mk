@@ -28,7 +28,7 @@ ifneq ($(USER_C_MODULES),)
 SRC_USERMOD :=
 CFLAGS_USERMOD :=
 LDFLAGS_USERMOD :=
-$(foreach module, $(wildcard $(USER_C_MODULES)/*/micropython.mk), \
+$(foreach module, $(sort $(wildcard $(USER_C_MODULES)/*/micropython.mk)), \
     $(eval USERMOD_DIR = $(patsubst %/,%,$(dir $(module))))\
     $(info Including User C Module from $(USERMOD_DIR))\
 	$(eval include $(module))\
@@ -233,7 +233,7 @@ $(HEADER_BUILD)/mpversion.h: FORCE | $(HEADER_BUILD)
 
 # mpconfigport.mk is optional, but changes to it may drastically change
 # overall config, so they need to be caught
-MPCONFIGPORT_MK = $(wildcard mpconfigport.mk)
+MPCONFIGPORT_MK = $(sort $(wildcard mpconfigport.mk))
 
 # qstr data
 # Adding an order only dependency on $(HEADER_BUILD) causes $(HEADER_BUILD) to get

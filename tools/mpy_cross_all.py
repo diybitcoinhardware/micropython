@@ -22,8 +22,8 @@ if not args.out:
 
 path_prefix_len = len(args.dir) + 1
 
-for path, subdirs, files in os.walk(args.dir):
-    for f in files:
+for path, subdirs, files in sorted(list(os.walk(args.dir))):
+    for f in sorted(files):
         if f.endswith(".py"):
             fpath = path + "/" + f
             #print(fpath)

@@ -31,8 +31,8 @@ if len(sys.argv) > 1:
     root = sys.argv[1].rstrip("/")
     root_len = len(root)
 
-    for dirpath, dirnames, filenames in os.walk(root):
-        for f in filenames:
+    for dirpath, dirnames, filenames in sorted(list(os.walk(root))):
+        for f in sorted(filenames):
             fullpath = dirpath + "/" + f
             st = os.stat(fullpath)
             modules.append((fullpath[root_len + 1:], st))
