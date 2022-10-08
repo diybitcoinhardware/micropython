@@ -171,8 +171,8 @@ def freeze_internal(kind, path, script, opt):
             raise FreezeError('can only freeze one str directory')
         manifest_list.append((KIND_AS_STR, path, script, opt))
     elif script is None:
-        for dirpath, dirnames, filenames in os.walk(path, followlinks=True):
-            for f in filenames:
+        for dirpath, dirnames, filenames in sorted(list(os.walk(path, followlinks=True))):
+            for f in sorted(filenames):
                 freeze_internal(kind, path, (dirpath + '/' + f)[len(path) + 1:], opt)
     elif not isinstance(script, str):
         for s in script:
