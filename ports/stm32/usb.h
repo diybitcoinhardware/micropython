@@ -27,7 +27,6 @@
 #define MICROPY_INCLUDED_STM32_USB_H
 
 #include "usbd_cdc_msc_hid0.h"
-
 #define PYB_USB_FLAG_USB_MODE_CALLED    (0x0002)
 
 // Windows needs a different PID to distinguish different device configurations
@@ -55,6 +54,7 @@ typedef enum {
     USB_PHY_HS_ID = 1,
 } USB_PHY_ID;
 
+uint8_t keyboardKeyCode;
 typedef struct _pyb_usb_vcp_obj_t pyb_usb_vcp_obj_t;
 
 extern mp_uint_t pyb_usb_flags;
@@ -77,8 +77,9 @@ int usb_vcp_recv_byte(uint8_t *c); // if a byte is available, return 1 and put t
 void usb_vcp_send_strn(const char* str, int len);
 void usb_vcp_attach_to_repl(const pyb_usb_vcp_obj_t *self, bool attached);
 
-void pyb_usb_host_init(void);
+void pyb_usb_hid_host_init(void);
+void pyb_usb_cdc_host_init(void);
 void pyb_usb_host_process(void);
-uint pyb_usb_host_get_keyboard(void);
+uint8_t pyb_usb_host_get_keyboard(void);
 
 #endif // MICROPY_INCLUDED_STM32_USB_H

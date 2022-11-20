@@ -26,14 +26,12 @@
 
 #include <stdarg.h>
 #include <string.h>
-
 #include "usbd_core.h"
 #include "usbd_desc.h"
 #include "usbd_cdc_msc_hid.h"
 #include "usbd_cdc_interface.h"
 #include "usbd_msc_interface.h"
 #include "usbd_hid_interface.h"
-
 #include "py/objstr.h"
 #include "py/runtime.h"
 #include "py/stream.h"
@@ -440,15 +438,27 @@ STATIC mp_obj_t pyb_usb_mode(size_t n_args, const mp_obj_t *pos_args, mp_map_t *
     const char *mode_str = mp_obj_str_get_str(args[ARG_mode].u_obj);
 
 #if defined(USE_HOST_MODE)
-
+    //pyb_usb_host_init();
     // hardware configured for USB host mode
-
-    if (strcmp(mode_str, "host") == 0) {
-        pyb_usb_host_init();
-    } else {
+    
+    if (strcmp(mode_str, "HID_HOST") == 0) 
+    {
+        pyb_usb_hid_host_init();
+    }
+/*
+    else if (strcmp(mode_str, "CDC_HOST") == 0)
+    {
+        pyb_usb_cdc_host_init();
+    }
+*/
+    else if (strcmp(mode_str, "CCID_HOST") == 0)
+    {
+        return mp_const_none;
+    }  
+    else 
+    {
         goto bad_mode;
     }
-
 #else
 
     // hardware configured for USB device mode
@@ -1007,37 +1017,99 @@ const mp_obj_type_t pyb_usb_hid_type = {
 
 #include "led.h"
 #include "usbh_core.h"
-#include "usbh_usr.h"
-#include "usbh_hid_core.h"
+//#include "usbh_usr.h"
+//#include "usbh_hid_core.h"
 #include "usbh_hid_keybd.h"
 #include "usbh_hid_mouse.h"
-
-__ALIGN_BEGIN USBH_HOST USB_Host __ALIGN_END ;
-
+#include "usbh_hid.h"
+//#include "usbh_cdc.h"
+#include "usb_host.h"
+//__ALIGN_BEGIN USBH_HOST USB_Host __ALIGN_END ;
+/* USB Host core handle declaration */
+USBH_HandleTypeDef hUsbHostFS;
+//ApplicationTypeDef Appli_state = APPLICATION_IDLE;
 static int host_is_enabled = 0;
+#define BUFF_SIZE 64
+uint8_t CDC_RX_Buffer[BUFF_SIZE];
+uint8_t CDC_TX_Buffer[BUFF_SIZE];
 
-void pyb_usb_host_init(void) {
+typedef enum {
+  CDC_STATE_IDLE = 0,
+  CDC_SEND,
+  CDC_RECEIVE,
+} CDC_StateTypedef;
+CDC_StateTypedef CDC_STATE = CDC_STATE_IDLE;
+extern USBH_StatusTypeDef usbResult;
+
+void INIT_TEST_LED_Usb()
+{
+    GPIO_InitTypeDef GPIO_InitStruct;
+	HAL_GPIO_WritePin(GPIOK, GPIO_PIN_3, GPIO_PIN_RESET);
+	GPIO_InitStruct.Pin = GPIO_PIN_3;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOK, &GPIO_InitStruct);
+
+}
+
+void USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
+{
+    HID_KEYBD_Info_TypeDef *keybd_info;
+	HID_HandleTypeDef *HID_Handle =
+			(HID_HandleTypeDef *) phost->pActiveClass->pData;
+    HAL_GPIO_WritePin(GPIOK, GPIO_PIN_3, GPIO_PIN_RESET);
+    if (HID_Handle->Init == USBH_HID_KeybdInit) 
+    {
+            keybd_info = USBH_HID_GetKeybdInfo(phost);
+            keyboardKeyCode = USBH_HID_GetASCIICode(keybd_info);
+            if(keyboardKeyCode != 0)
+            {
+                HAL_GPIO_WritePin(GPIOK, GPIO_PIN_3, GPIO_PIN_SET);
+            }
+    }
+    else
+    {
+        USBH_HID_GetMouseInfo(phost);
+    }
+}
+
+void pyb_usb_hid_host_init(void) {
     if (!host_is_enabled) {
         // only init USBH once in the device's power-lifetime
         /* Init Host Library */
-        USBH_Init(&USB_OTG_Core, USB_OTG_FS_CORE_ID, &USB_Host, &HID_cb, &USR_Callbacks);
+        INIT_TEST_LED_Usb();
+        USBH_Init(&hUsbHostFS, USBH_UserProcess, HOST_FS);
+        USBH_RegisterClass(&hUsbHostFS, USBH_HID_CLASS);
+        USBH_Start(&hUsbHostFS);
     }
     host_is_enabled = 1;
 }
-
+/*
+void pyb_usb_cdc_host_init(void) {
+    if (!host_is_enabled) {
+        // only init USBH once in the device's power-lifetime
+        INIT_TEST_LED_Usb();
+        USBH_Init(&hUsbHostFS, USBH_UserProcess, HOST_FS);
+        USBH_RegisterClass(&hUsbHostFS, USBH_CDC_CLASS);
+        USBH_Start(&hUsbHostFS);
+        while(1)
+        {
+            pyb_usb_host_process();
+        }
+    }
+    host_is_enabled = 1;
+}
+*/
 void pyb_usb_host_process(void) {
-    USBH_Process(&USB_OTG_Core, &USB_Host);
+    USBH_Process(&hUsbHostFS);
 }
-
-uint8_t usb_keyboard_key = 0;
-
-// TODO this is an ugly hack to get key presses
-uint pyb_usb_host_get_keyboard(void) {
-    uint key = usb_keyboard_key;
-    usb_keyboard_key = 0;
-    return key;
+/*
+uint8_t pyb_usb_host_get_keyboard(void) {
+    return keyboardKeyCode;
 }
-
+*/
+/*
 void USR_MOUSE_Init(void) {
     led_state(4, 1);
     USB_OTG_BSP_mDelay(100);
@@ -1062,7 +1134,7 @@ void USR_KEYBRD_ProcessData(uint8_t pbuf) {
     led_state(4, 0);
     usb_keyboard_key = pbuf;
 }
-
+*/
 #endif // USE_HOST_MODE
 
 #endif // MICROPY_HW_ENABLE_USB

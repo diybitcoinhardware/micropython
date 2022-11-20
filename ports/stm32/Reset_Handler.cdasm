@@ -1,0 +1,20 @@
+0x0807da50: 04 46           	mov	r4, r0
+0x0807da52: df f8 30 d0     	ldr.w	sp, [pc, #48]	; 0x807da84 <.bss_zero_entry+14>
+0x0807da56: 0c 49           	ldr	r1, [pc, #48]	; (0x807da88 <.bss_zero_entry+18>)
+0x0807da58: 0c 4a           	ldr	r2, [pc, #48]	; (0x807da8c <.bss_zero_entry+22>)
+0x0807da5a: 0d 4b           	ldr	r3, [pc, #52]	; (0x807da90 <.bss_zero_entry+26>)
+0x0807da5c: 03 e0           	b.n	0x807da66 <Reset_Handler+22>
+0x0807da5e: 51 f8 04 0b     	ldr.w	r0, [r1], #4
+0x0807da62: 42 f8 04 0b     	str.w	r0, [r2], #4
+0x0807da66: 9a 42           	cmp	r2, r3
+0x0807da68: f9 d3           	bcc.n	0x807da5e <Reset_Handler+14>
+0x0807da6a: 00 20           	movs	r0, #0
+0x0807da6c: 09 49           	ldr	r1, [pc, #36]	; (0x807da94 <.bss_zero_entry+30>)
+0x0807da6e: 0a 4a           	ldr	r2, [pc, #40]	; (0x807da98 <.bss_zero_entry+34>)
+0x0807da70: 01 e0           	b.n	0x807da76 <Reset_Handler+38>
+0x0807da72: 41 f8 04 0b     	str.w	r0, [r1], #4
+0x0807da76: 91 42           	cmp	r1, r2
+0x0807da78: fb d3           	bcc.n	0x807da72 <Reset_Handler+34>
+0x0807da7a: ff f7 31 ff     	bl	0x807d8e0 <SystemInit>
+0x0807da7e: 20 46           	mov	r0, r4
+0x0807da80: eb f7 16 bd     	b.w	0x80694b0 <stm32_main>

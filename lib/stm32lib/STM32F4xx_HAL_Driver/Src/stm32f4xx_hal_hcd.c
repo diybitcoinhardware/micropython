@@ -73,7 +73,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
-
+#include <stdio.h>
 /** @addtogroup STM32F4xx_HAL_Driver
   * @{
   */
@@ -725,6 +725,18 @@ HCD_URBStateTypeDef HAL_HCD_HC_GetURBState(HCD_HandleTypeDef *hhcd, uint8_t chnu
   return hhcd->hc[chnum].urb_state;
 }
 
+/**
+  * @brief  Return the last host transfer size.
+  * @param  hhcd: HCD handle
+  * @param  chnum: Channel number.
+  *         This parameter can be a value from 1 to 15
+  * @retval last transfer size in byte
+  */
+uint32_t HAL_HCD_HC_GetXferPktCount(HCD_HandleTypeDef *hhcd, uint8_t chnum)
+{
+  return hhcd->hc[chnum].xfer_pktcnt;
+}
+
 
 /**
   * @brief  Return the last host transfer size.
@@ -1088,7 +1100,7 @@ static void HCD_RXQLVL_IRQHandler(HCD_HandleTypeDef *hhcd)
   uint32_t pktcnt;
   uint32_t temp = 0U;
   uint32_t tmpreg = 0U;
-
+  
   temp = hhcd->Instance->GRXSTSP;
   channelnum = temp &  USB_OTG_GRXSTSP_EPNUM;
   pktsts = (temp &  USB_OTG_GRXSTSP_PKTSTS) >> 17U;
@@ -1106,6 +1118,7 @@ static void HCD_RXQLVL_IRQHandler(HCD_HandleTypeDef *hhcd)
       /*manage multiple Xfer */
       hhcd->hc[channelnum].xfer_buff += pktcnt;
       hhcd->hc[channelnum].xfer_count  += pktcnt;
+      hhcd->hc[channelnum].xfer_pktcnt = pktcnt;
 
       if((USBx_HC(channelnum)->HCTSIZ & USB_OTG_HCTSIZ_PKTCNT) > 0)
       {

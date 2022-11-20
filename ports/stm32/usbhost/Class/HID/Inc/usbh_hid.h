@@ -106,16 +106,16 @@
 /* States for HID State Machine */
 typedef enum
 {
-  HID_INIT= 0,  
-  HID_IDLE,
-  HID_SEND_DATA,
-  HID_BUSY,
-  HID_GET_DATA,   
-  HID_SYNC,     
-  HID_POLL,
-  HID_ERROR,
+  HID_INIT_HOST= 0,  
+  HID_IDLE_HOST,
+  HID_SEND_DATA_HOST,
+  HID_BUSY_HOST,
+  HID_GET_DATA_HOST,   
+  HID_SYNC_HOST,     
+  HID_POLL_HOST,
+  HID_ERROR_HOST,
 }
-HID_StateTypeDef;
+HID_Host_StateTypeDef;
 
 typedef enum
 {
@@ -213,7 +213,7 @@ typedef struct _HID_Process
 {
   uint8_t              OutPipe; 
   uint8_t              InPipe; 
-  HID_StateTypeDef     state; 
+  HID_Host_StateTypeDef     state; 
   uint8_t              OutEp;
   uint8_t              InEp;
   HID_CtlStateTypeDef  ctl_state;
@@ -272,6 +272,9 @@ HID_HandleTypeDef;
   */ 
 extern USBH_ClassTypeDef  HID_Class;
 #define USBH_HID_CLASS    &HID_Class
+
+extern USBH_ClassTypeDef  CDC_Class;
+#define USBH_CDC_CLASS    &CDC_Class
 /**
   * @}
   */ 

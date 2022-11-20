@@ -161,7 +161,7 @@ static USBH_StatusTypeDef USBH_CDC_InterfaceInit (USBH_HandleTypeDef *phost)
   else
   {
     USBH_SelectInterface (phost, interface);
-    phost->pActiveClass->pData = (CDC_HandleTypeDef *)USBH_malloc (sizeof(CDC_HandleTypeDef));
+    phost->pActiveClass->pData = (CDC_HandleTypeDef *)m_new (sizeof(CDC_HandleTypeDef));
     CDC_Handle =  phost->pActiveClass->pData; 
     
     /*Collect the notification endpoint address and length*/
@@ -287,7 +287,7 @@ USBH_StatusTypeDef USBH_CDC_InterfaceDeInit (USBH_HandleTypeDef *phost)
   
   if(phost->pActiveClass->pData)
   {
-    USBH_free (phost->pActiveClass->pData);
+    m_free (phost->pActiveClass->pData);
     phost->pActiveClass->pData = 0;
   }
    

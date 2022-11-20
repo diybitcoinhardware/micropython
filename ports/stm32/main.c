@@ -86,7 +86,10 @@
 #if MICROPY_PY_THREAD
 STATIC pyb_thread_t pyb_thread_main;
 #endif
-
+#if defined(USB_HID_HOST_MODE) || defined(USB_CCID_HOST_MODE) 
+#define MICROPY_HW_UART_REPL PYB_UART_3
+#define MICROPY_HW_UART_REPL_BAUD 115200
+#endif
 #if defined(MICROPY_HW_UART_REPL)
 #ifndef MICROPY_HW_UART_REPL_RXBUF
 #define MICROPY_HW_UART_REPL_RXBUF (260)
@@ -770,7 +773,7 @@ soft_reset:
     // Now we initialise sub-systems that need configuration from boot.py,
     // or whose initialisation can be safely deferred until after running
     // boot.py.
-
+    #ifndef USE_HOST_MODE
     #ifndef SKIP_USBINIT
     #if MICROPY_HW_ENABLE_USB
     // init USB device to default setting if it was not already configured
@@ -784,6 +787,7 @@ soft_reset:
         #endif
         pyb_usb_dev_init(pyb_usb_dev_detect(), USBD_VID, pid, mode, 0, NULL, NULL);
     }
+    #endif
     #endif
     #endif
 

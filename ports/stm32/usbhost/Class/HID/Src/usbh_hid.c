@@ -156,7 +156,7 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit (USBH_HandleTypeDef *phost)
     USBH_SelectInterface (phost, interface);
     phost->pActiveClass->pData = (HID_HandleTypeDef *)USBH_malloc (sizeof(HID_HandleTypeDef));
     HID_Handle =  phost->pActiveClass->pData; 
-    HID_Handle->state = HID_ERROR;
+    HID_Handle->state = HID_ERROR_HOST;
     
     /*Decode Bootclass Protocl: Mouse or Keyboard*/
     if(phost->device.CfgDesc.Itf_Desc[phost->device.current_interface].bInterfaceProtocol == HID_KEYBRD_BOOT_CODE)
@@ -175,7 +175,7 @@ static USBH_StatusTypeDef USBH_HID_InterfaceInit (USBH_HandleTypeDef *phost)
       return USBH_FAIL;
     }
     
-    HID_Handle->state     = HID_INIT;
+    HID_Handle->state     = HID_INIT_HOST;
     HID_Handle->ctl_state = HID_REQ_INIT; 
     HID_Handle->ep_addr   = phost->device.CfgDesc.Itf_Desc[phost->device.current_interface].Ep_Desc[0].bEndpointAddress;
     HID_Handle->length    = phost->device.CfgDesc.Itf_Desc[phost->device.current_interface].Ep_Desc[0].wMaxPacketSize;
@@ -361,9 +361,9 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
   
   switch (HID_Handle->state)
   {
-  case HID_INIT:
+  case HID_INIT_HOST:
     HID_Handle->Init(phost); 
-  case HID_IDLE:
+  case HID_IDLE_HOST:
     if(USBH_HID_GetReport (phost,
                            0x01,
                             0,
@@ -372,7 +372,7 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
     {
       
       fifo_write(&HID_Handle->fifo, HID_Handle->pData, HID_Handle->length);  
-      HID_Handle->state = HID_SYNC;
+      HID_Handle->state = HID_SYNC_HOST;
     }
     
     break;
@@ -382,7 +382,7 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
     /* Sync with start of Even Frame */
     if(phost->Timer & 1)
     {
-      HID_Handle->state = HID_GET_DATA; 
+      HID_Handle->state = HID_GET_DATA_HOST; 
     }
 #if (USBH_USE_OS == 1)
     osMessagePut ( phost->os_event, USBH_URB_EVENT, 0);
@@ -396,7 +396,7 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
                               HID_Handle->length,
                               HID_Handle->InPipe);
     
-    HID_Handle->state = HID_POLL;
+    HID_Handle->state = HID_POLL_HOST;
     HID_Handle->timer = phost->Timer;
     HID_Handle->DataReady = 0;
     break;
@@ -446,11 +446,11 @@ static USBH_StatusTypeDef USBH_HID_SOFProcess(USBH_HandleTypeDef *phost)
 {
   HID_HandleTypeDef *HID_Handle =  phost->pActiveClass->pData;
   
-  if(HID_Handle->state == HID_POLL)
+  if(HID_Handle->state == HID_POLL_HOST)
   {
     if(( phost->Timer - HID_Handle->timer) >= HID_Handle->poll)
     {
-      HID_Handle->state = HID_GET_DATA;
+      HID_Handle->state = HID_GET_DATA_HOST;
 #if (USBH_USE_OS == 1)
     osMessagePut ( phost->os_event, USBH_URB_EVENT, 0);
 #endif       

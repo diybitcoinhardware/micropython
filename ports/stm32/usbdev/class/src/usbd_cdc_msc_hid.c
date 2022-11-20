@@ -754,7 +754,7 @@ static uint8_t USBD_CDC_MSC_HID_Init(USBD_HandleTypeDef *pdev, uint8_t cfgidx) {
         // Prepare Out endpoint to receive next packet
         USBD_LL_PrepareReceive(pdev, usbd->hid->out_ep, buf, mps_out);
 
-        usbd->hid->state = HID_IDLE;
+        usbd->hid->state = HID_IDLE_DEV;
     }
     #endif
 
@@ -1061,7 +1061,7 @@ static uint8_t USBD_CDC_MSC_HID_DataIn(USBD_HandleTypeDef *pdev, uint8_t epnum) 
     if ((usbd->usbd_mode & USBD_MODE_IFACE_HID) && epnum == (usbd->hid->in_ep & 0x7f)) {
         /* Ensure that the FIFO is empty before a new transfer, this condition could
         be caused by  a new transfer before the end of the previous transfer */
-        usbd->hid->state = HID_IDLE;
+        usbd->hid->state = HID_IDLE_DEV;
         return USBD_OK;
     }
     #endif
@@ -1257,13 +1257,13 @@ uint8_t USBD_HID_ReceivePacket(usbd_hid_state_t *hid, uint8_t *buf) {
 }
 
 int USBD_HID_CanSendReport(usbd_hid_state_t *hid) {
-    return hid->usbd->pdev->dev_state == USBD_STATE_CONFIGURED && hid->state == HID_IDLE;
+    return hid->usbd->pdev->dev_state == USBD_STATE_CONFIGURED && hid->state == HID_IDLE_DEV;
 }
 
 uint8_t USBD_HID_SendReport(usbd_hid_state_t *hid, uint8_t *report, uint16_t len) {
     if (hid->usbd->pdev->dev_state == USBD_STATE_CONFIGURED) {
-        if (hid->state == HID_IDLE) {
-            hid->state = HID_BUSY;
+        if (hid->state == HID_IDLE_DEV) {
+            hid->state = HID_BUSY_DEV;
             USBD_LL_Transmit(hid->usbd->pdev, hid->in_ep, report, len);
             return USBD_OK;
         }

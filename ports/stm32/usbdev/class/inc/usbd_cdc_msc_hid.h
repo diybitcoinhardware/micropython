@@ -89,9 +89,9 @@ typedef struct {
 } USBD_MSC_BOT_HandleTypeDef;
 
 typedef enum {
-    HID_IDLE = 0,
-    HID_BUSY,
-} HID_StateTypeDef;
+    HID_IDLE_DEV = 0,
+    HID_BUSY_DEV,
+} HID_Device_StateTypeDef;
 
 typedef struct {
     struct _usbd_cdc_msc_hid_state_t *usbd; // The parent USB device

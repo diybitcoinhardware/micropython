@@ -57,7 +57,6 @@
 #define INTERFACE_DESC_TYPE               0x04
 #define ENDPOINT_DESC_TYPE                0x05
 #define INTERFACE_DESC_SIZE               0x09
-
 /**
   * @}
   */ 

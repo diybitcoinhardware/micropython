@@ -74,6 +74,9 @@ extern struct _spi_bdev_t spi_bdev;
 #ifndef MODULE_SDRAM_ENABLED
 #define MODULE_SDRAM_ENABLED 		(1)
 #endif
+#ifndef MODULE_USBSCARD_ENABLED
+#define MODULE_USBSCARD_ENABLED     (1)
+#endif
 // #define MICROPY_PY_THREAD           (1)
 
 // HSE is 8MHz
@@ -139,4 +142,7 @@ extern struct _spi_bdev_t spi_bdev;
 #define MICROPY_HW_USB_FS (1)
 #define MICROPY_HW_USB_VBUS_DETECT_PIN (pin_A9)
 #define MICROPY_HW_USB_OTG_ID_PIN      (pin_A10)
+#define USE_HOST_MODE (1)
+//#define USB_HID_HOST_MODE (1)
+#define USB_CCID_HOST_MODE (1)
 

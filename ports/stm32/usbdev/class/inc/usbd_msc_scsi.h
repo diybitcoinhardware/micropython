@@ -89,7 +89,7 @@
 #define UNIT_ATTENTION                              6
 #define DATA_PROTECT                                7
 #define BLANK_CHECK                                 8
-#define VENDOR_SPECIFIC                             9
+//#define VENDOR_SPECIFIC                             9
 #define COPY_ABORTED                               10
 #define ABORTED_COMMAND                            11
 #define VOLUME_OVERFLOW                            13

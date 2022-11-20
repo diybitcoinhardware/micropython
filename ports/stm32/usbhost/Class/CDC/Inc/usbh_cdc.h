@@ -54,9 +54,8 @@
 
 
 /*Communication Class codes*/
-#define USB_CDC_CLASS                                           0x02
-#define COMMUNICATION_INTERFACE_CLASS_CODE                      0x02
-
+#define USB_CDC_CLASS                                           0x0b
+#define COMMUNICATION_INTERFACE_CLASS_CODE                      0x0b
 /*Data Interface Class Codes*/
 #define DATA_INTERFACE_CLASS_CODE                               0x0A
 
@@ -152,8 +151,7 @@ CDC_DataStateTypeDef;
 typedef enum
 {
   CDC_IDLE_STATE= 0,
-  CDC_SET_LINE_CODING_STATE,  
-  CDC_GET_LAST_LINE_CODING_STATE,    
+  CCID_GET_DATA_HOST, 
   CDC_TRANSFER_DATA, 
   CDC_ERROR_STATE,  
 }
@@ -397,9 +395,6 @@ extern USBH_ClassTypeDef  CDC_Class;
 /** @defgroup USBH_CDC_CORE_Exported_FunctionsPrototype
 * @{
 */ 
-
-USBH_StatusTypeDef  USBH_CDC_SetLineCoding(USBH_HandleTypeDef *phost, 
-                                           CDC_LineCodingTypeDef *linecoding);
 
 USBH_StatusTypeDef  USBH_CDC_GetLineCoding(USBH_HandleTypeDef *phost, 
                                            CDC_LineCodingTypeDef *linecoding);

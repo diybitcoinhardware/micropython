@@ -6,7 +6,7 @@ BOARD ?= PYBV10
 BUILD ?= build-$(BOARD)
 
 SKIP_USBINIT ?= 0
-MICROPY_HW_SDCARD_MOUNT_AT_BOOT ?= 0
+MICROPY_HW_SDCARD_MOUNT_AT_BOOT ?= 1
 
 BOARD_DIR ?= boards/$(BOARD)
 ifeq ($(wildcard $(BOARD_DIR)/.),)
@@ -36,7 +36,7 @@ LD_DIR=boards
 CMSIS_DIR=$(TOP)/lib/stm32lib/CMSIS/STM32$(MCU_SERIES_UPPER)xx/Include
 HAL_DIR=lib/stm32lib/STM32$(MCU_SERIES_UPPER)xx_HAL_Driver
 USBDEV_DIR=usbdev
-#USBHOST_DIR=usbhost
+USBHOST_DIR=usbhost
 DFU=$(TOP)/tools/dfu.py
 # may need to prefix dfu-util with sudo
 USE_PYDFU ?= 1
@@ -48,7 +48,6 @@ OPENOCD ?= openocd
 OPENOCD_CONFIG ?= boards/openocd_stm32f4.cfg
 STARTUP_FILE ?= lib/stm32lib/CMSIS/STM32$(MCU_SERIES_UPPER)xx/Source/Templates/gcc/startup_$(CMSIS_MCU_LOWER).o
 SYSTEM_FILE ?= lib/stm32lib/CMSIS/STM32$(MCU_SERIES_UPPER)xx/Source/Templates/system_stm32$(MCU_SERIES)xx.o
-
 # Select the cross compile prefix
 CROSS_COMPILE ?= arm-none-eabi-
 
@@ -59,7 +58,7 @@ INC += -I$(TOP)/lib/cmsis/inc
 INC += -I$(CMSIS_DIR)/
 INC += -I$(TOP)/$(HAL_DIR)/Inc
 INC += -I$(USBDEV_DIR)/core/inc -I$(USBDEV_DIR)/class/inc
-#INC += -I$(USBHOST_DIR)
+INC += -I$(USBHOST_DIR)/Class/HID/Inc
 INC += -Ilwip_inc
 
 # Basic Cortex-M flags
@@ -101,7 +100,7 @@ ifeq ($(SKIP_USBINIT),1)
 CFLAGS += -DSKIP_USBINIT=$(SKIP_USBINIT)
 endif
 CFLAGS += -DMICROPY_HW_SDCARD_MOUNT_AT_BOOT=$(MICROPY_HW_SDCARD_MOUNT_AT_BOOT)
-
+CFLAGS += -lcrt -lc
 # Configure for nan-boxing object model if requested
 ifeq ($(NANBOX),1)
 CFLAGS += -DMP_CONFIGFILE='"mpconfigport_nanbox.h"'
@@ -257,6 +256,10 @@ SRC_C = \
 	usbd_cdc_interface.c \
 	usbd_hid_interface.c \
 	usbd_msc_interface.c \
+	usbh_hid.c \
+	usbh_hid_keybd.c \
+	usbh_hid_mouse.c \
+	usbh_hid_parser.c \
 	mphalport.c \
 	mpthreadport.c \
 	irq.c \
@@ -364,6 +367,7 @@ SRC_HAL = $(addprefix $(HAL_DIR)/Src/stm32$(MCU_SERIES)xx_,\
 	hal_tim.c \
 	hal_tim_ex.c \
 	hal_uart.c \
+	hal_hcd.c \
 	)
 
 ifeq ($(MCU_SERIES),$(filter $(MCU_SERIES),f4 f7 h7 l0 l4 wb))

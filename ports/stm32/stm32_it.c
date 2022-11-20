@@ -90,7 +90,7 @@ extern PCD_HandleTypeDef pcd_fs_handle;
 #if defined(MICROPY_HW_USB_HS)
 extern PCD_HandleTypeDef pcd_hs_handle;
 #endif
-
+extern HCD_HandleTypeDef hhcd_USB_OTG_FS;
 /******************************************************************************/
 /*            Cortex-M4 Processor Exceptions Handlers                         */
 /******************************************************************************/
@@ -323,7 +323,8 @@ void USB_LP_IRQHandler(void) {
 #if MICROPY_HW_USB_FS
 void OTG_FS_IRQHandler(void) {
     IRQ_ENTER(OTG_FS_IRQn);
-    HAL_PCD_IRQHandler(&pcd_fs_handle);
+    HAL_HCD_IRQHandler(&hhcd_USB_OTG_FS)
+//    HAL_PCD_IRQHandler(&pcd_fs_handle);
     IRQ_EXIT(OTG_FS_IRQn);
 }
 #endif

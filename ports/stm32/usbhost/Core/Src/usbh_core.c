@@ -807,6 +807,39 @@ void  USBH_LL_IncTimer  (USBH_HandleTypeDef *phost)
 }
 
 /**
+  * @brief  USBH_PortEnabled
+  *         Port Enabled
+  * @param  phost: Host Handle
+  * @retval None
+  */
+void USBH_LL_PortEnabled(USBH_HandleTypeDef *phost)
+{
+  phost->device.PortEnabled = 1U;
+
+#if (USBH_USE_OS == 1U)
+  phost->os_msg = (uint32_t)USBH_PORT_EVENT;
+#if (osCMSIS < 0x20000U)
+  (void)osMessagePut(phost->os_event, phost->os_msg, 0U);
+#else
+  (void)osMessageQueuePut(phost->os_event, &phost->os_msg, 0U, NULL);
+#endif
+#endif
+
+  return;
+}
+/**
+  * @brief  USBH_LL_PortDisabled
+  *         Port Disabled
+  * @param  phost: Host Handle
+  * @retval None
+  */
+void USBH_LL_PortDisabled(USBH_HandleTypeDef *phost)
+{
+  phost->device.PortEnabled = 0U;
+
+  return;
+}
+/**
   * @brief  USBH_HandleSof 
   *         Call SOF process
   * @param  phost: Host Handle
