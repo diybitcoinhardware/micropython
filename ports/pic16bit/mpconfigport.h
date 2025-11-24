@@ -73,9 +73,9 @@
 // The xc16 compiler doesn't seem to respect alignment (!!) so we
 // need to use instead an object representation that allows for
 // 2-byte aligned pointers (see config setting above).
-//#define MICROPY_OBJ_BASE_ALIGNMENT  __attribute__((aligned(4)))
+// #define MICROPY_OBJ_BASE_ALIGNMENT  __attribute__((aligned(4)))
 
-#define MICROPY_MAKE_POINTER_CALLABLE(p) ((void*)((mp_uint_t)(p)))
+#define MICROPY_MAKE_POINTER_CALLABLE(p) ((void *)((mp_uint_t)(p)))
 
 #define UINT_FMT "%u"
 #define INT_FMT "%d"
@@ -84,27 +84,12 @@ typedef unsigned int mp_uint_t; // must be pointer size
 
 typedef int mp_off_t;
 
-#define MP_PLAT_PRINT_STRN(str, len) mp_hal_stdout_tx_strn_cooked(str, len)
-
 // extra builtin names to add to the global namespace
 #define MICROPY_PORT_BUILTINS \
     { MP_ROM_QSTR(MP_QSTR_open), MP_ROM_PTR(&mp_builtin_open_obj) },
 
-// extra builtin modules to add to the list of known ones
-extern const struct _mp_obj_module_t pyb_module;
-#define MICROPY_PORT_BUILTIN_MODULES \
-    { MP_ROM_QSTR(MP_QSTR_pyb), MP_ROM_PTR(&pyb_module) }, \
-
 #define MP_STATE_PORT MP_STATE_VM
-
-#define MICROPY_PORT_ROOT_POINTERS \
-    char *readline_hist[8]; \
-    mp_obj_t keyboard_interrupt_obj; \
 
 #define MICROPY_MPHALPORT_H "pic16bit_mphal.h"
 #define MICROPY_HW_BOARD_NAME "dsPICSK"
 #define MICROPY_HW_MCU_NAME "dsPIC33"
-
-// XC16 toolchain doesn't seem to define these
-typedef int intptr_t;
-typedef unsigned int uintptr_t;

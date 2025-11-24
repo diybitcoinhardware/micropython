@@ -4,7 +4,7 @@
  * The MIT License (MIT)
  *
  * Copyright (c) 2017 "Eric Poulsen" <eric@zyxod.com>
- * Copyright (c) 2017 "Tom Manning" <tom@manningetal.com> 
+ * Copyright (c) 2017 "Tom Manning" <tom@manningetal.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,7 @@ typedef struct {
     uint64_t ext1_pins; // set bit == pin#
     int8_t ext0_pin;   // just the pin#, -1 == None
     bool wake_on_touch : 1;
+    bool wake_on_ulp : 1;
     bool ext0_level : 1;
     wake_type_t ext0_wake_types;
     bool ext1_level : 1;

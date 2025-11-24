@@ -8,6 +8,8 @@
  *  names of these defines are likely to change.
  */
 
+// *FORMAT-OFF*
+
 #ifndef SPI_REGISTER_H_INCLUDED
 #define SPI_REGISTER_H_INCLUDED
 
@@ -77,7 +79,7 @@
 #define SPI_MOSI_DELAY_NUM 0x00000007
 #define SPI_MOSI_DELAY_NUM_S 23
 #define SPI_MOSI_DELAY_MODE 0x00000003  //mode 0 : posedge; data set at positive edge of clk
-										//mode 1 : negedge + 1 cycle delay, only if freq<10MHz ; data set at negitive edge of clk
+										//mode 1 : negedge + 1 cycle delay, only if freq<10MHz ; data set at negative edge of clk
 										//mode 2 : Do not use this mode.
 #define SPI_MOSI_DELAY_MODE_S 21
 #define SPI_MISO_DELAY_NUM 0x00000007

@@ -18,12 +18,12 @@ The first thing you need is a board with an ESP8266 chip.  The MicroPython
 software supports the ESP8266 chip itself and any board should work.  The main
 characteristic of a board is how much flash it has, how the GPIO pins are
 connected to the outside world, and whether it includes a built-in USB-serial
-convertor to make the UART available to your PC.
+converter to make the UART available to your PC.
 
 The minimum requirement for flash size is 1Mbyte. There is also a special
 build for boards with 512KB, but it is highly limited comparing to the
 normal build: there is no support for filesystem, and thus features which
-depend on it won't work (WebREPL, upip, etc.). As such, 512KB build will
+depend on it won't work (WebREPL, mip, etc.). As such, 512KB build will
 be more interesting for users who build from source and fine-tune parameters
 for their particular application.
 
@@ -41,8 +41,8 @@ Please refer to the documentation for your board for further details.
 Getting the firmware
 --------------------
 
-The first thing you need to do is download the most recent MicroPython firmware 
-.bin file to load onto your ESP8266 device. You can download it from the  
+The first thing you need to do is download the most recent MicroPython firmware
+.bin file to load onto your ESP8266 device. You can download it from the
 `MicroPython downloads page <http://micropython.org/download#esp8266>`_.
 From here, you have 3 main choices
 
@@ -64,16 +64,20 @@ such, only daily builds for 512kb modules are provided.
 Deploying the firmware
 ----------------------
 
-Once you have the MicroPython firmware (compiled code), you need to load it onto 
+Once you have the MicroPython firmware (compiled code), you need to load it onto
 your ESP8266 device.  There are two main steps to do this: first you
 need to put your device in boot-loader mode, and second you need to copy across
 the firmware.  The exact procedure for these steps is highly dependent on the
 particular board and you will need to refer to its documentation for details.
 
-If you have a board that has a USB connector, a USB-serial convertor, and has
+If you have a board that has a USB connector, a USB-serial converter, and has
 the DTR and RTS pins wired in a special way then deploying the firmware should
 be easy as all steps can be done automatically.  Boards that have such features
 include the Adafruit Feather HUZZAH and NodeMCU boards.
+
+If you do not have such a board, you need keep GPIO0 pulled to ground and reset
+the device by pulling the reset pin to ground and releasing it again to enter
+programming mode.
 
 For best results it is recommended to first erase the entire flash of your
 device before putting on new MicroPython firmware.
@@ -105,20 +109,26 @@ PC.  You may also need to reduce the baudrate if you get errors when flashing
 that you have.
 
 For some boards with a particular FlashROM configuration (e.g. some variants of
-a NodeMCU board) you may need to use the following command to deploy
-the firmware (note the ``-fm dio`` option)::
+a NodeMCU board) you may need to manually set a compatible
+`SPI Flash Mode <https://github.com/espressif/esptool/wiki/SPI-Flash-Modes>`_.
+You'd usually pick the fastest option that is compatible with your device, but
+the ``-fm dout`` option (the slowest option) should have the best compatibility::
 
-    esptool.py --port /dev/ttyUSB0 --baud 460800 write_flash --flash_size=detect -fm dio 0 esp8266-20170108-v1.8.7.bin
+    esptool.py --port /dev/ttyUSB0 --baud 460800 write_flash --flash_size=detect -fm dout 0 esp8266-20170108-v1.8.7.bin
 
 If the above commands run without error then MicroPython should be installed on
 your board!
+
+If you pulled GPIO0 manually to ground to enter programming mode, release it
+now and reset the device by again pulling the reset pin to ground for a short
+duration.
 
 Serial prompt
 -------------
 
 Once you have the firmware on the device you can access the REPL (Python prompt)
 over UART0 (GPIO1=TX, GPIO3=RX), which might be connected to a USB-serial
-convertor, depending on your board.  The baudrate is 115200.  The next part of
+converter, depending on your board.  The baudrate is 115200.  The next part of
 the tutorial will discuss the prompt in more detail.
 
 WiFi
@@ -127,7 +137,7 @@ WiFi
 After a fresh install and boot the device configures itself as a WiFi access
 point (AP) that you can connect to.  The ESSID is of the form MicroPython-xxxxxx
 where the x's are replaced with part of the MAC address of your device (so will
-be the same everytime, and most likely different for all ESP8266 chips).  The
+be the same every time, and most likely different for all ESP8266 chips).  The
 password for the WiFi is micropythoN (note the upper-case N).  Its IP address
 will be 192.168.4.1 once you connect to its network.  WiFi configuration will
 be discussed in more detail later in the tutorial.
@@ -159,7 +169,7 @@ after it, here are troubleshooting recommendations:
 
 * The flashing instructions above use flashing speed of 460800 baud, which is
   good compromise between speed and stability. However, depending on your
-  module/board, USB-UART convertor, cables, host OS, etc., the above baud
+  module/board, USB-UART converter, cables, host OS, etc., the above baud
   rate may be too high and lead to errors. Try a more common 115200 baud
   rate instead in such cases.
 

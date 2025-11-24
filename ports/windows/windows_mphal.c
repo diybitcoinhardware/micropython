@@ -25,29 +25,31 @@
  */
 
 
-#include "py/mpstate.h"
+#include "py/runtime.h"
 #include "py/mphal.h"
+#include "py/mpthread.h"
 
 #include <sys/time.h>
 #include <windows.h>
 #include <unistd.h>
+#include <bcrypt.h>
 
 HANDLE std_in = NULL;
 HANDLE con_out = NULL;
 DWORD orig_mode = 0;
 
-STATIC void assure_stdin_handle() {
+static void assure_stdin_handle() {
     if (!std_in) {
         std_in = GetStdHandle(STD_INPUT_HANDLE);
         assert(std_in != INVALID_HANDLE_VALUE);
     }
 }
 
-STATIC void assure_conout_handle() {
+static void assure_conout_handle() {
     if (!con_out) {
         con_out = CreateFile("CONOUT$", GENERIC_READ | GENERIC_WRITE,
-                      FILE_SHARE_READ | FILE_SHARE_WRITE,
-                      NULL, OPEN_EXISTING, 0, 0);
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            NULL, OPEN_EXISTING, 0, 0);
         assert(con_out != INVALID_HANDLE_VALUE);
     }
 }
@@ -68,7 +70,7 @@ void mp_hal_stdio_mode_orig(void) {
 }
 
 // Handler to be installed by SetConsoleCtrlHandler, currently used only to handle Ctrl-C.
-// This handler has to be installed just once (this has to be done elswhere in init code).
+// This handler has to be installed just once (this has to be done elsewhere in init code).
 // Previous versions of the mp_hal code would install a handler whenever Ctrl-C input is
 // allowed and remove the handler again when it is not. That is not necessary though (1),
 // and it might introduce problems (2) because console notifications are delivered to the
@@ -79,12 +81,11 @@ void mp_hal_stdio_mode_orig(void) {
 // the thread created for handling it might not be running yet so we'd miss the notification.
 BOOL WINAPI console_sighandler(DWORD evt) {
     if (evt == CTRL_C_EVENT) {
-        if (MP_STATE_VM(mp_pending_exception) == MP_OBJ_FROM_PTR(&MP_STATE_VM(mp_kbd_exception))) {
+        if (MP_STATE_MAIN_THREAD(mp_pending_exception) == MP_OBJ_FROM_PTR(&MP_STATE_VM(mp_kbd_exception))) {
             // this is the second time we are called, so die straight away
             exit(1);
         }
-        mp_obj_exception_clear_traceback(MP_OBJ_FROM_PTR(&MP_STATE_VM(mp_kbd_exception)));
-        MP_STATE_VM(mp_pending_exception) = MP_OBJ_FROM_PTR(&MP_STATE_VM(mp_kbd_exception));
+        mp_sched_keyboard_interrupt();
         return TRUE;
     }
     return FALSE;
@@ -141,8 +142,8 @@ typedef struct item_t {
     const char *seq;
 } item_t;
 
-// map virtual key codes to VT100 escape sequences
-STATIC item_t keyCodeMap[] = {
+// map virtual key codes to key sequences known by MicroPython's readline implementation
+static item_t keyCodeMap[] = {
     {VK_UP, "[A"},
     {VK_DOWN, "[B"},
     {VK_RIGHT, "[C"},
@@ -150,13 +151,22 @@ STATIC item_t keyCodeMap[] = {
     {VK_HOME, "[H"},
     {VK_END, "[F"},
     {VK_DELETE, "[3~"},
-    {0, ""} //sentinel
+    {0, ""} // sentinel
 };
 
-STATIC const char *cur_esc_seq = NULL;
+// likewise, but with Ctrl key down
+static item_t ctrlKeyCodeMap[] = {
+    {VK_LEFT, "b"},
+    {VK_RIGHT, "f"},
+    {VK_DELETE, "d"},
+    {VK_BACK, "\x7F"},
+    {0, ""} // sentinel
+};
 
-STATIC int esc_seq_process_vk(int vk) {
-    for (item_t *p = keyCodeMap; p->vkey != 0; ++p) {
+static const char *cur_esc_seq = NULL;
+
+static int esc_seq_process_vk(WORD vk, bool ctrl_key_down) {
+    for (item_t *p = (ctrl_key_down ? ctrlKeyCodeMap : keyCodeMap); p->vkey != 0; ++p) {
         if (p->vkey == vk) {
             cur_esc_seq = p->seq;
             return 27; // ESC, start of escape sequence
@@ -165,7 +175,7 @@ STATIC int esc_seq_process_vk(int vk) {
     return 0; // nothing found
 }
 
-STATIC int esc_seq_chr() {
+static int esc_seq_chr() {
     if (cur_esc_seq) {
         const char c = *cur_esc_seq++;
         if (c) {
@@ -185,28 +195,37 @@ int mp_hal_stdin_rx_chr(void) {
 
     // poll until key which we handle is pressed
     assure_stdin_handle();
+    BOOL status;
     DWORD num_read;
     INPUT_RECORD rec;
     for (;;) {
-      if (!ReadConsoleInput(std_in, &rec, 1, &num_read) || !num_read) {
-          return CHAR_CTRL_C; // EOF, ctrl-D
-      }
-      if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown) { // only want key down events
-          continue;
-      }
-      const char c = rec.Event.KeyEvent.uChar.AsciiChar;
-      if (c) { // plain ascii char, return it
-          return c;
-      }
-      const int ret = esc_seq_process_vk(rec.Event.KeyEvent.wVirtualKeyCode);
-      if (ret) {
-          return ret;
-      }
+        MP_THREAD_GIL_EXIT();
+        status = ReadConsoleInput(std_in, &rec, 1, &num_read);
+        MP_THREAD_GIL_ENTER();
+        if (!status || !num_read) {
+            return CHAR_CTRL_C; // EOF, ctrl-D
+        }
+        if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown) { // only want key down events
+            continue;
+        }
+        const bool ctrl_key_down = (rec.Event.KeyEvent.dwControlKeyState & LEFT_CTRL_PRESSED) ||
+            (rec.Event.KeyEvent.dwControlKeyState & RIGHT_CTRL_PRESSED);
+        const int ret = esc_seq_process_vk(rec.Event.KeyEvent.wVirtualKeyCode, ctrl_key_down);
+        if (ret) {
+            return ret;
+        }
+        const char c = rec.Event.KeyEvent.uChar.AsciiChar;
+        if (c) { // plain ascii char, return it
+            return c;
+        }
     }
 }
 
-void mp_hal_stdout_tx_strn(const char *str, size_t len) {
-    write(1, str, len);
+mp_uint_t mp_hal_stdout_tx_strn(const char *str, size_t len) {
+    MP_THREAD_GIL_EXIT();
+    int ret = write(STDOUT_FILENO, str, len);
+    MP_THREAD_GIL_ENTER();
+    return ret < 0 ? 0 : ret; // return the number of bytes written, so in case of an error in the syscall, return 0
 }
 
 void mp_hal_stdout_tx_strn_cooked(const char *str, size_t len) {
@@ -232,9 +251,47 @@ mp_uint_t mp_hal_ticks_us(void) {
 mp_uint_t mp_hal_ticks_cpu(void) {
     LARGE_INTEGER value;
     QueryPerformanceCounter(&value);
-#ifdef _WIN64
+    #ifdef _WIN64
     return value.QuadPart;
-#else
+    #else
     return value.LowPart;
+    #endif
+}
+
+uint64_t mp_hal_time_ns(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (uint64_t)tv.tv_sec * 1000000000ULL + (uint64_t)tv.tv_usec * 1000ULL;
+}
+
+void msec_sleep(double msec) {
+    if (msec < 0.0) {
+        msec = 0.0;
+    }
+    SleepEx((DWORD)msec, TRUE);
+}
+
+#ifdef _MSC_VER
+int usleep(__int64 usec) {
+    msec_sleep((double)usec / 1000.0);
+    return 0;
+}
 #endif
+
+void mp_hal_delay_ms(mp_uint_t ms) {
+    #if MICROPY_ENABLE_SCHEDULER
+    mp_uint_t start = mp_hal_ticks_ms();
+    while (mp_hal_ticks_ms() - start < ms) {
+        mp_event_wait_ms(1);
+    }
+    #else
+    msec_sleep((double)ms);
+    #endif
+}
+
+void mp_hal_get_random(size_t n, void *buf) {
+    NTSTATUS result = BCryptGenRandom(NULL, (unsigned char *)buf, n, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if (!BCRYPT_SUCCESS(result)) {
+        mp_raise_OSError(errno);
+    }
 }

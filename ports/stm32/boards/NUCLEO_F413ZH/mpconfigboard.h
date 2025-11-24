@@ -3,10 +3,13 @@
 
 #define MICROPY_HW_HAS_SWITCH       (1)
 #define MICROPY_HW_HAS_FLASH        (1)
+#define MICROPY_HW_ENABLE_INTERNAL_FLASH_STORAGE (1)
+#define MICROPY_HW_ENABLE_INTERNAL_FLASH_STORAGE_SEGMENT2 (1)
 #define MICROPY_HW_ENABLE_RNG       (1)
 #define MICROPY_HW_ENABLE_RTC       (1)
 #define MICROPY_HW_ENABLE_DAC       (1)
 #define MICROPY_HW_ENABLE_USB       (1)
+#define MICROPY_HW_ENABLE_SERVO     (1)
 
 // HSE is 8MHz, CPU freq set to 96MHz
 #define MICROPY_HW_CLK_PLLM (8)
@@ -41,7 +44,7 @@
 #define MICROPY_HW_UART_REPL        PYB_UART_3
 #define MICROPY_HW_UART_REPL_BAUD   115200
 
-// I2C busses
+// I2C buses
 #define MICROPY_HW_I2C1_SCL (pin_B8)
 #define MICROPY_HW_I2C1_SDA (pin_B9)
 #define MICROPY_HW_I2C2_SCL (pin_F1)
@@ -49,7 +52,7 @@
 #define MICROPY_HW_I2C3_SCL (pin_A8)
 #define MICROPY_HW_I2C3_SDA (pin_C9)
 
-// SPI busses
+// SPI buses
 #define MICROPY_HW_SPI1_NSS     (pin_A4) // shared with DAC
 #define MICROPY_HW_SPI1_SCK     (pin_A5) // shared with DAC
 #define MICROPY_HW_SPI1_MISO    (pin_A6)
@@ -71,7 +74,7 @@
 #define MICROPY_HW_SPI5_MISO    (pin_E13)
 #define MICROPY_HW_SPI5_MOSI    (pin_E14)
 
-// CAN busses
+// CAN buses
 #define MICROPY_HW_CAN1_TX (pin_G1)
 #define MICROPY_HW_CAN1_RX (pin_G0)
 #define MICROPY_HW_CAN2_TX (pin_G12)

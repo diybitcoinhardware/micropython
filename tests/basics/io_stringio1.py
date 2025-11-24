@@ -1,8 +1,4 @@
-try:
-    import uio as io
-except ImportError:
-    import io
-
+import io
 a = io.StringIO()
 print('io.StringIO' in repr(a))
 print(a.getvalue())
@@ -32,6 +28,11 @@ print(a.getvalue())
 a = io.StringIO()
 a.write("foo")
 print(a.read())
+
+a = io.StringIO()
+print(a.tell())
+a.write("foo")
+print(a.tell())
 
 a = io.StringIO()
 a.close()

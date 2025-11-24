@@ -14,18 +14,24 @@
 void NUCLEO_H743ZI_board_early_init(void);
 
 // The board has an 8MHz HSE, the following gives 400MHz CPU speed
-#define MICROPY_HW_CLK_PLLM (4)
-#define MICROPY_HW_CLK_PLLN (400)
-#define MICROPY_HW_CLK_PLLP (2)
-#define MICROPY_HW_CLK_PLLQ (4)
-#define MICROPY_HW_CLK_PLLR (2)
+#define MICROPY_HW_CLK_PLLM         (4)
+#define MICROPY_HW_CLK_PLLN         (400)
+#define MICROPY_HW_CLK_PLLP         (2)
+#define MICROPY_HW_CLK_PLLQ         (4)
+#define MICROPY_HW_CLK_PLLR         (2)
+#define MICROPY_HW_CLK_PLLVCI       (RCC_PLL1VCIRANGE_1)
+#define MICROPY_HW_CLK_PLLVCO       (RCC_PLL1VCOWIDE)
+#define MICROPY_HW_CLK_PLLFRAC      (0)
 
 // The USB clock is set using PLL3
-#define MICROPY_HW_CLK_PLL3M (4)
-#define MICROPY_HW_CLK_PLL3N (120)
-#define MICROPY_HW_CLK_PLL3P (2)
-#define MICROPY_HW_CLK_PLL3Q (5)
-#define MICROPY_HW_CLK_PLL3R (2)
+#define MICROPY_HW_CLK_PLL3M        (4)
+#define MICROPY_HW_CLK_PLL3N        (120)
+#define MICROPY_HW_CLK_PLL3P        (2)
+#define MICROPY_HW_CLK_PLL3Q        (5)
+#define MICROPY_HW_CLK_PLL3R        (2)
+#define MICROPY_HW_CLK_PLL3VCI      (RCC_PLL3VCIRANGE_1)
+#define MICROPY_HW_CLK_PLL3VCO      (RCC_PLL3VCOWIDE)
+#define MICROPY_HW_CLK_PLL3FRAC     (0)
 
 // 4 wait states
 #define MICROPY_HW_FLASH_LATENCY    FLASH_LATENCY_4
@@ -49,7 +55,7 @@ void NUCLEO_H743ZI_board_early_init(void);
 #define MICROPY_HW_UART_REPL        PYB_UART_3
 #define MICROPY_HW_UART_REPL_BAUD   115200
 
-// I2C busses
+// I2C buses
 #define MICROPY_HW_I2C1_SCL         (pin_B8)
 #define MICROPY_HW_I2C1_SDA         (pin_B9)
 #define MICROPY_HW_I2C2_SCL         (pin_F1)
@@ -57,7 +63,7 @@ void NUCLEO_H743ZI_board_early_init(void);
 #define MICROPY_HW_I2C4_SCL         (pin_F14)
 #define MICROPY_HW_I2C4_SDA         (pin_F15)
 
-// SPI
+// SPI buses
 #define MICROPY_HW_SPI3_NSS         (pin_A4)
 #define MICROPY_HW_SPI3_SCK         (pin_B3)
 #define MICROPY_HW_SPI3_MISO        (pin_B4)
@@ -91,8 +97,8 @@ void NUCLEO_H743ZI_board_early_init(void);
 #define MICROPY_HW_SDCARD_DETECT_PULL       (GPIO_PULLUP)
 #define MICROPY_HW_SDCARD_DETECT_PRESENT    (GPIO_PIN_RESET)
 
-// Ethernet via RMII (MDC define disabled for now until eth.c supports H7)
-//#define MICROPY_HW_ETH_MDC          (pin_C1)
+// Ethernet via RMII
+#define MICROPY_HW_ETH_MDC          (pin_C1)
 #define MICROPY_HW_ETH_MDIO         (pin_A2)
 #define MICROPY_HW_ETH_RMII_REF_CLK (pin_A1)
 #define MICROPY_HW_ETH_RMII_CRS_DV  (pin_A7)

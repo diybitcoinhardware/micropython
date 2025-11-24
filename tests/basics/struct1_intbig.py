@@ -1,11 +1,8 @@
 try:
-    import ustruct as struct
-except:
-    try:
-        import struct
-    except ImportError:
-        print("SKIP")
-        raise SystemExit
+    import struct
+except ImportError:
+    print("SKIP")
+    raise SystemExit
 
 # check maximum pack on 32-bit machine
 print(struct.pack("<I", 2**32 - 1))
@@ -36,3 +33,11 @@ print(struct.unpack("<Q", b"\xff\xff\xff\xff\xff\xff\xff\xff"))
 # check small int overflow
 print(struct.unpack("<i", b'\xff\xff\xff\x7f'))
 print(struct.unpack("<q", b'\xff\xff\xff\xff\xff\xff\xff\x7f'))
+
+# test with negative big integers that are actually small in magnitude
+bigzero = (1 << 70) - (1 << 70)
+for endian in "<>":
+    for type_ in "bhiq":
+        fmt = endian + type_
+        b = struct.pack(fmt, -2 + bigzero)
+        print(fmt, b, struct.unpack(fmt, b))

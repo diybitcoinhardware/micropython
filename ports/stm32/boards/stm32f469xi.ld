@@ -6,7 +6,7 @@
 MEMORY
 {
     FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 2048K   /* Entire flash */
-    FLASH_ISR (rx)  : ORIGIN = 0x08000000, LENGTH = 16K     /* Sector 0 */
+    FLASH_START (rx): ORIGIN = 0x08000000, LENGTH = 16K     /* Sector 0 */
     FLASH_RSV (r)   : ORIGIN = 0x08004000, LENGTH = 16K     /* Sector 1 (reserved) */
     FLASH_FS (r)    : ORIGIN = 0x08008000, LENGTH = 96K     /* Sectors 2, 3, 4 */
     FLASH_TEXT (rx) : ORIGIN = 0x08020000, LENGTH = 1920K   /* Sectors 5 - 23 */
@@ -28,3 +28,9 @@ _ram_start = ORIGIN(RAM);
 _ram_end = ORIGIN(RAM) + LENGTH(RAM);
 _heap_start = _ebss; /* heap starts just after statically allocated memory */
 _heap_end = _sstack;
+
+/* Filesystem cache in RAM, and storage in flash */
+_micropy_hw_internal_flash_storage_ram_cache_start = ORIGIN(DTCM);
+_micropy_hw_internal_flash_storage_ram_cache_end = ORIGIN(DTCM) + LENGTH(DTCM);
+_micropy_hw_internal_flash_storage_start = ORIGIN(FLASH_FS);
+_micropy_hw_internal_flash_storage_end = ORIGIN(FLASH_FS) + LENGTH(FLASH_FS);

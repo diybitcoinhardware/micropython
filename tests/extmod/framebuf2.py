@@ -4,13 +4,15 @@ except ImportError:
     print("SKIP")
     raise SystemExit
 
+
 def printbuf():
     print("--8<--")
     for y in range(h):
         for x in range(w):
-            print('%u' % ((buf[(x + y * w) // 4] >> ((x & 3) << 1)) & 3), end='')
+            print("%u" % ((buf[(x + y * w) // 4] >> ((x & 3) << 1)) & 3), end="")
         print()
     print("-->8--")
+
 
 w = 8
 h = 5
@@ -46,7 +48,7 @@ printbuf()
 
 w2 = 2
 h2 = 3
-buf2 = bytearray(w2 * h2 // 4)
+buf2 = bytearray(h2 * ((w2 + 3) // 4))
 fbuf2 = framebuf.FrameBuffer(buf2, w2, h2, framebuf.GS2_HMSB)
 
 # blit

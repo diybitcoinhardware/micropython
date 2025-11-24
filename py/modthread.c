@@ -28,7 +28,6 @@
 #include <string.h>
 
 #include "py/runtime.h"
-#include "py/stackctrl.h"
 
 #if MICROPY_PY_THREAD
 
@@ -45,7 +44,7 @@
 /****************************************************************/
 // Lock object
 
-STATIC const mp_obj_type_t mp_type_thread_lock;
+static const mp_obj_type_t mp_type_thread_lock;
 
 typedef struct _mp_obj_thread_lock_t {
     mp_obj_base_t base;
@@ -53,15 +52,14 @@ typedef struct _mp_obj_thread_lock_t {
     volatile bool locked;
 } mp_obj_thread_lock_t;
 
-STATIC mp_obj_thread_lock_t *mp_obj_new_thread_lock(void) {
-    mp_obj_thread_lock_t *self = m_new_obj(mp_obj_thread_lock_t);
-    self->base.type = &mp_type_thread_lock;
+static mp_obj_thread_lock_t *mp_obj_new_thread_lock(void) {
+    mp_obj_thread_lock_t *self = mp_obj_malloc(mp_obj_thread_lock_t, &mp_type_thread_lock);
     mp_thread_mutex_init(&self->mutex);
     self->locked = false;
     return self;
 }
 
-STATIC mp_obj_t thread_lock_acquire(size_t n_args, const mp_obj_t *args) {
+static mp_obj_t thread_lock_acquire(size_t n_args, const mp_obj_t *args) {
     mp_obj_thread_lock_t *self = MP_OBJ_TO_PTR(args[0]);
     bool wait = true;
     if (n_args > 1) {
@@ -80,9 +78,9 @@ STATIC mp_obj_t thread_lock_acquire(size_t n_args, const mp_obj_t *args) {
         mp_raise_OSError(-ret);
     }
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(thread_lock_acquire_obj, 1, 3, thread_lock_acquire);
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(thread_lock_acquire_obj, 1, 3, thread_lock_acquire);
 
-STATIC mp_obj_t thread_lock_release(mp_obj_t self_in) {
+static mp_obj_t thread_lock_release(mp_obj_t self_in) {
     mp_obj_thread_lock_t *self = MP_OBJ_TO_PTR(self_in);
     if (!self->locked) {
         mp_raise_msg(&mp_type_RuntimeError, NULL);
@@ -93,21 +91,21 @@ STATIC mp_obj_t thread_lock_release(mp_obj_t self_in) {
     MP_THREAD_GIL_ENTER();
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(thread_lock_release_obj, thread_lock_release);
+static MP_DEFINE_CONST_FUN_OBJ_1(thread_lock_release_obj, thread_lock_release);
 
-STATIC mp_obj_t thread_lock_locked(mp_obj_t self_in) {
+static mp_obj_t thread_lock_locked(mp_obj_t self_in) {
     mp_obj_thread_lock_t *self = MP_OBJ_TO_PTR(self_in);
     return mp_obj_new_bool(self->locked);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(thread_lock_locked_obj, thread_lock_locked);
+static MP_DEFINE_CONST_FUN_OBJ_1(thread_lock_locked_obj, thread_lock_locked);
 
-STATIC mp_obj_t thread_lock___exit__(size_t n_args, const mp_obj_t *args) {
+static mp_obj_t thread_lock___exit__(size_t n_args, const mp_obj_t *args) {
     (void)n_args; // unused
     return thread_lock_release(args[0]);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(thread_lock___exit___obj, 4, 4, thread_lock___exit__);
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(thread_lock___exit___obj, 4, 4, thread_lock___exit__);
 
-STATIC const mp_rom_map_elem_t thread_lock_locals_dict_table[] = {
+static const mp_rom_map_elem_t thread_lock_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_acquire), MP_ROM_PTR(&thread_lock_acquire_obj) },
     { MP_ROM_QSTR(MP_QSTR_release), MP_ROM_PTR(&thread_lock_release_obj) },
     { MP_ROM_QSTR(MP_QSTR_locked), MP_ROM_PTR(&thread_lock_locked_obj) },
@@ -115,25 +113,26 @@ STATIC const mp_rom_map_elem_t thread_lock_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&thread_lock___exit___obj) },
 };
 
-STATIC MP_DEFINE_CONST_DICT(thread_lock_locals_dict, thread_lock_locals_dict_table);
+static MP_DEFINE_CONST_DICT(thread_lock_locals_dict, thread_lock_locals_dict_table);
 
-STATIC const mp_obj_type_t mp_type_thread_lock = {
-    { &mp_type_type },
-    .name = MP_QSTR_lock,
-    .locals_dict = (mp_obj_dict_t*)&thread_lock_locals_dict,
-};
+static MP_DEFINE_CONST_OBJ_TYPE(
+    mp_type_thread_lock,
+    MP_QSTR_lock,
+    MP_TYPE_FLAG_NONE,
+    locals_dict, &thread_lock_locals_dict
+    );
 
 /****************************************************************/
 // _thread module
 
-STATIC size_t thread_stack_size = 0;
+static size_t thread_stack_size = 0;
 
-STATIC mp_obj_t mod_thread_get_ident(void) {
-    return mp_obj_new_int_from_uint((uintptr_t)mp_thread_get_state());
+static mp_obj_t mod_thread_get_ident(void) {
+    return mp_obj_new_int_from_uint(mp_thread_get_id());
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_get_ident_obj, mod_thread_get_ident);
+static MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_get_ident_obj, mod_thread_get_ident);
 
-STATIC mp_obj_t mod_thread_stack_size(size_t n_args, const mp_obj_t *args) {
+static mp_obj_t mod_thread_stack_size(size_t n_args, const mp_obj_t *args) {
     mp_obj_t ret = mp_obj_new_int_from_uint(thread_stack_size);
     if (n_args == 0) {
         thread_stack_size = 0;
@@ -142,7 +141,7 @@ STATIC mp_obj_t mod_thread_stack_size(size_t n_args, const mp_obj_t *args) {
     }
     return ret;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mod_thread_stack_size_obj, 0, 1, mod_thread_stack_size);
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mod_thread_stack_size_obj, 0, 1, mod_thread_stack_size);
 
 typedef struct _thread_entry_args_t {
     mp_obj_dict_t *dict_locals;
@@ -154,16 +153,13 @@ typedef struct _thread_entry_args_t {
     mp_obj_t args[];
 } thread_entry_args_t;
 
-STATIC void *thread_entry(void *args_in) {
+static void *thread_entry(void *args_in) {
     // Execution begins here for a new thread.  We do not have the GIL.
 
-    thread_entry_args_t *args = (thread_entry_args_t*)args_in;
+    thread_entry_args_t *args = (thread_entry_args_t *)args_in;
 
     mp_state_thread_t ts;
-    mp_thread_set_state(&ts);
-
-    mp_stack_set_top(&ts + 1); // need to include ts in root-pointer scan
-    mp_stack_set_limit(args->stack_size);
+    mp_thread_init_state(&ts, args->stack_size, args->dict_locals, args->dict_globals);
 
     #if MICROPY_ENABLE_PYSTACK
     // TODO threading and pystack is not fully supported, for now just make a small stack
@@ -171,17 +167,12 @@ STATIC void *thread_entry(void *args_in) {
     mp_pystack_init(mini_pystack, &mini_pystack[128]);
     #endif
 
-    // set locals and globals from the calling context
-    mp_locals_set(args->dict_locals);
-    mp_globals_set(args->dict_globals);
-
     MP_THREAD_GIL_ENTER();
 
     // signal that we are set up and running
     mp_thread_start();
 
     // TODO set more thread-specific state here:
-    //  mp_pending_exception? (root pointer)
     //  cur_exception (root pointer)
 
     DEBUG_printf("[thread] start ts=%p args=%p stack=%p\n", &ts, &args, MP_STATE_THREAD(stack_top));
@@ -193,7 +184,7 @@ STATIC void *thread_entry(void *args_in) {
     } else {
         // uncaught exception
         // check for SystemExit
-        mp_obj_base_t *exc = (mp_obj_base_t*)nlr.ret_val;
+        mp_obj_base_t *exc = (mp_obj_base_t *)nlr.ret_val;
         if (mp_obj_is_subclass_fast(MP_OBJ_FROM_PTR(exc->type), MP_OBJ_FROM_PTR(&mp_type_SystemExit))) {
             // swallow exception silently
         } else {
@@ -215,7 +206,7 @@ STATIC void *thread_entry(void *args_in) {
     return NULL;
 }
 
-STATIC mp_obj_t mod_thread_start_new_thread(size_t n_args, const mp_obj_t *args) {
+static mp_obj_t mod_thread_start_new_thread(size_t n_args, const mp_obj_t *args) {
     // This structure holds the Python function and arguments for thread entry.
     // We copy all arguments into this structure to keep ownership of them.
     // We must be very careful about root pointers because this pointer may
@@ -230,15 +221,15 @@ STATIC mp_obj_t mod_thread_start_new_thread(size_t n_args, const mp_obj_t *args)
     // check for keyword arguments
     if (n_args == 2) {
         // just position arguments
-        th_args = m_new_obj_var(thread_entry_args_t, mp_obj_t, pos_args_len);
+        th_args = m_new_obj_var(thread_entry_args_t, args, mp_obj_t, pos_args_len);
         th_args->n_kw = 0;
     } else {
         // positional and keyword arguments
         if (mp_obj_get_type(args[2]) != &mp_type_dict) {
-            mp_raise_TypeError("expecting a dict for keyword args");
+            mp_raise_TypeError(MP_ERROR_TEXT("expecting a dict for keyword args"));
         }
-        mp_map_t *map = &((mp_obj_dict_t*)MP_OBJ_TO_PTR(args[2]))->map;
-        th_args = m_new_obj_var(thread_entry_args_t, mp_obj_t, pos_args_len + 2 * map->used);
+        mp_map_t *map = &((mp_obj_dict_t *)MP_OBJ_TO_PTR(args[2]))->map;
+        th_args = m_new_obj_var(thread_entry_args_t, args, mp_obj_t, pos_args_len + 2 * map->used);
         th_args->n_kw = map->used;
         // copy across the keyword arguments
         for (size_t i = 0, n = pos_args_len; i < map->alloc; ++i) {
@@ -249,7 +240,7 @@ STATIC mp_obj_t mod_thread_start_new_thread(size_t n_args, const mp_obj_t *args)
         }
     }
 
-    // copy agross the positional arguments
+    // copy across the positional arguments
     th_args->n_args = pos_args_len;
     memcpy(th_args->args, pos_args_items, pos_args_len * sizeof(mp_obj_t));
 
@@ -264,23 +255,21 @@ STATIC mp_obj_t mod_thread_start_new_thread(size_t n_args, const mp_obj_t *args)
     th_args->fun = args[0];
 
     // spawn the thread!
-    mp_thread_create(thread_entry, th_args, &th_args->stack_size);
-
-    return mp_const_none;
+    return mp_obj_new_int_from_uint(mp_thread_create(thread_entry, th_args, &th_args->stack_size));
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mod_thread_start_new_thread_obj, 2, 3, mod_thread_start_new_thread);
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mod_thread_start_new_thread_obj, 2, 3, mod_thread_start_new_thread);
 
-STATIC mp_obj_t mod_thread_exit(void) {
-    nlr_raise(mp_obj_new_exception(&mp_type_SystemExit));
+static mp_obj_t mod_thread_exit(void) {
+    mp_raise_type(&mp_type_SystemExit);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_exit_obj, mod_thread_exit);
+static MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_exit_obj, mod_thread_exit);
 
-STATIC mp_obj_t mod_thread_allocate_lock(void) {
+static mp_obj_t mod_thread_allocate_lock(void) {
     return MP_OBJ_FROM_PTR(mp_obj_new_thread_lock());
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_allocate_lock_obj, mod_thread_allocate_lock);
+static MP_DEFINE_CONST_FUN_OBJ_0(mod_thread_allocate_lock_obj, mod_thread_allocate_lock);
 
-STATIC const mp_rom_map_elem_t mp_module_thread_globals_table[] = {
+static const mp_rom_map_elem_t mp_module_thread_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR__thread) },
     { MP_ROM_QSTR(MP_QSTR_LockType), MP_ROM_PTR(&mp_type_thread_lock) },
     { MP_ROM_QSTR(MP_QSTR_get_ident), MP_ROM_PTR(&mod_thread_get_ident_obj) },
@@ -290,11 +279,13 @@ STATIC const mp_rom_map_elem_t mp_module_thread_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_allocate_lock), MP_ROM_PTR(&mod_thread_allocate_lock_obj) },
 };
 
-STATIC MP_DEFINE_CONST_DICT(mp_module_thread_globals, mp_module_thread_globals_table);
+static MP_DEFINE_CONST_DICT(mp_module_thread_globals, mp_module_thread_globals_table);
 
 const mp_obj_module_t mp_module_thread = {
     .base = { &mp_type_module },
-    .globals = (mp_obj_dict_t*)&mp_module_thread_globals,
+    .globals = (mp_obj_dict_t *)&mp_module_thread_globals,
 };
+
+MP_REGISTER_MODULE(MP_QSTR__thread, mp_module_thread);
 
 #endif // MICROPY_PY_THREAD

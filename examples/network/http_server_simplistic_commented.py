@@ -8,10 +8,7 @@
 # details, and use this code only for quick hacks, preferring
 # http_server.py for "real thing".
 #
-try:
-    import usocket as socket
-except:
-    import socket
+import socket
 
 
 CONTENT = b"""\
@@ -19,6 +16,7 @@ HTTP/1.0 200 OK
 
 Hello #%d from MicroPython!
 """
+
 
 def main():
     s = socket.socket()

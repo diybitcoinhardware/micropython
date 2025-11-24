@@ -37,7 +37,7 @@ For example::
 Constructors
 ------------
 
-.. class:: LCD160CR(connect=None, \*, pwr=None, i2c=None, spi=None, i2c_addr=98)
+.. class:: LCD160CR(connect=None, *, pwr=None, i2c=None, spi=None, i2c_addr=98)
 
     Construct an LCD160CR object.  The parameters are:
 
@@ -313,7 +313,7 @@ Advanced commands
     specified by :meth:`LCD160CR.set_spi_win`, starting from the top-left corner.
 
     The `framebuf <framebuf.html>`_ module can be used to construct frame buffers
-    and provides drawing primitives. Using a frame buffer will improve 
+    and provides drawing primitives. Using a frame buffer will improve
     performance of animations when compared to drawing directly to the screen.
 
 .. method:: LCD160CR.set_scroll(on)

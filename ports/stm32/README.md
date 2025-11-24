@@ -2,23 +2,19 @@ MicroPython port to STM32 MCUs
 ==============================
 
 This directory contains the port of MicroPython to ST's line of STM32
-microcontrollers.  Supported MCU series are: STM32F0, STM32F4, STM32F7 and
-STM32L4.  Parts of the code here utilise the STM32Cube HAL library.
+microcontrollers.  Supported MCU series are: STM32F0, STM32F4, STM32F7, STM32G0,
+STM32G4, STM32H5, STM32H7, STM32L0, STM32L1, STM32L4, STM32WL and STM32WB.
+Parts of the code here utilise the STM32Cube HAL library.
 
 The officially supported boards are the line of pyboards: PYBv1.0 and PYBv1.1
-(both with STM32F405), and PYBLITEv1.0 (with STM32F411).  See
+(both with STM32F405), PYBLITEv1.0 (with STM32F411) and PYBD-SFx (with
+STM32F7xx MCUs).  See
 [micropython.org/pyboard](http://www.micropython.org/pyboard/) for further
 details.
 
 Other boards that are supported include ST Discovery and Nucleo boards.
 See the boards/ subdirectory, which contains the configuration files used
 to build each individual board.
-
-The STM32H7 series has preliminary support: there is a working REPL via
-USB and UART, as well as very basic peripheral support, but some things do
-not work and none of the advanced features of the STM32H7 are yet supported,
-such as the clock tree.  At this point the STM32H7 should be considered as a
-fast version of the STM32F7.
 
 Build instructions
 ------------------
@@ -40,24 +36,74 @@ see [here](https://launchpad.net/gcc-arm-embedded) for the main GCC ARM
 Embedded page.  The compiler can be changed using the `CROSS_COMPILE` variable
 when invoking `make`.
 
-First the submodules must be obtained using:
+Next, the board to build must be selected.  The default board is PYBV10 but any
+of the names of the subdirectories in the `boards/` directory is a valid board.
+The board name must be passed as the argument to `BOARD=` when invoking `make`.
 
-    $ make submodules
+All boards require certain submodules to be obtained before they can be built.
+The correct set of submodules can be initialised using (with `PYBV11` as an
+example of the selected board):
 
-Then to build for a given board, run:
+    $ make BOARD=PYBV11 submodules
+
+Then to build the board's firmware run:
 
     $ make BOARD=PYBV11
 
-The default board is PYBV10 but any of the names of the subdirectories in the
-`boards/` directory can be passed as the argument to `BOARD=`.  The above command
-should produce binary images in the `build-PYBV11/` subdirectory (or the
-equivalent directory for the board specified).
+The above command should produce binary images in the `build-PYBV11/`
+subdirectory (or the equivalent directory for the board specified).
 
-You must then get your board/microcontroller into DFU mode.  On the pyboard
-connect the 3V3 pin to the P1/DFU pin with a wire (they are next to each
-other on the bottom left of the board, second row from the bottom) and then
-reset (by pressing the RST button) or power on the board.  Then flash the
-firmware using the command:
+Note that some boards require the mboot bootloader to be built and deployed
+before flashing the main firmware.  For such boards an information message
+about this will be printed at the end of the main firmware build.  Mboot
+can be built via:
+
+    $ make -C mboot BOARD=STM32F769DISC
+
+For more information about mboot see mboot/README.md.
+
+### Link Time Optimization
+
+Link Time Optimization (LTO) reduces the firmware binary size when enabled
+(typically 2-3% smaller). However it may make build time longer, particularly on
+older GCC versions.
+
+Currently LTO is enabled by default for some smaller STM32 boards with less
+flash, but disabled on other boards.
+
+To enable LTO, pass `LTO=1` on the command line:
+
+    $ make BOARD=boardname LTO=1
+
+To disable LTO, pass `LTO=0` in the same way.
+
+Note that `make clean BOARD=boardname` will be needed before changing the `LTO`
+setting of a firmware that is already built.
+
+### Flashing the Firmware using DFU mode
+
+You must then get your board/microcontroller into DFU (Device Firmware
+Update) mode.
+
+If you already have MicroPython installed on the board you can do that by
+calling `machine.bootloader()` on the board, either at the REPL or using
+`pyboard.py`. A nice property of this approach is that you can automate it
+so you can update the board without manually pressing any buttons.
+
+If you do not have MicroPython running yet, temporarily jumper your board's
+DFU pin (typ. BOOT0) to 3.3v and reset or power-on the board.
+
+On a pyboard the P1/DFU pin and a 3.3v pin are next to each other (on the
+bottom left of the board, second row from the bottom) and the reset button
+is labeled RST.
+
+For the pyboard D-series you can enter the mboot DFU bootloader by holding down
+the USR button, pressing and releasing the RST button, and continuing to hold
+down USR until the LED is white (4th in the cycle), then let go of USR while
+the LED is white. The LED will then flash red once per second to indicate it
+is in USB DFU mode.
+
+Once the board is in DFU mode, flash the firmware using the command:
 
     $ make BOARD=PYBV11 deploy
 
@@ -120,6 +166,11 @@ Accessing the board
 -------------------
 
 Once built and deployed, access the MicroPython REPL (the Python prompt) via USB
-serial or UART, depending on the board.  For the pyboard you can try:
+serial or UART, depending on the board.  There are many ways to do this, one of
+which is via `mpremote` (install it using `pip install mpremote`):
+
+    $ mpremote
+
+Other options are `picocom` and `screen`, for example:
 
     $ picocom /dev/ttyACM0

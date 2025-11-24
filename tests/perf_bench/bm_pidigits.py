@@ -9,10 +9,7 @@
 def compose(a, b):
     aq, ar, as_, at = a
     bq, br, bs, bt = b
-    return (aq * bq,
-            aq * br + ar * bt,
-            as_ * bq + at * bs,
-            as_ * br + at * bt)
+    return (aq * bq, aq * br + ar * bt, as_ * bq + at * bs, as_ * br + at * bt)
 
 
 def extract(z, j):
@@ -39,11 +36,13 @@ def gen_pi_digits(n):
 # Benchmark interface
 
 bm_params = {
+    (32, 10): (1, 20),
     (50, 25): (1, 35),
     (100, 100): (1, 65),
     (1000, 1000): (2, 250),
     (5000, 1000): (3, 350),
 }
+
 
 def bm_setup(params):
     state = None
@@ -53,10 +52,10 @@ def bm_setup(params):
         nloop, ndig = params
         ndig = params[1]
         for _ in range(nloop):
-            state = None # free previous result
+            state = None  # free previous result
             state = gen_pi_digits(ndig)
 
     def result():
-        return params[0] * params[1], ''.join(str(d) for d in state)
+        return params[0] * params[1], "".join(str(d) for d in state)
 
     return run, result

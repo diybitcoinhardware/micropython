@@ -11,10 +11,13 @@ desc = {
     "arr2": (uctypes.ARRAY | 0, 2, {"b": uctypes.UINT8 | 0}),
     "arr3": (uctypes.ARRAY | 2, uctypes.UINT16 | 2),
     "arr4": (uctypes.ARRAY | 0, 2, {"b": uctypes.UINT8 | 0, "w": uctypes.UINT16 | 1}),
-    "sub": (0, {
-        'b1': uctypes.BFUINT8 | 0 | 4 << uctypes.BF_POS | 4 << uctypes.BF_LEN,
-        'b2': uctypes.BFUINT8 | 0 | 0 << uctypes.BF_POS | 4 << uctypes.BF_LEN,
-    }),
+    "sub": (
+        0,
+        {
+            "b1": uctypes.BFUINT8 | 0 | 4 << uctypes.BF_POS | 4 << uctypes.BF_LEN,
+            "b2": uctypes.BFUINT8 | 0 | 0 << uctypes.BF_POS | 4 << uctypes.BF_LEN,
+        },
+    ),
 }
 
 data = bytearray(b"01234567")
@@ -40,8 +43,47 @@ assert uctypes.sizeof(S.arr4) == 6
 print(uctypes.sizeof(S.sub))
 assert uctypes.sizeof(S.sub) == 1
 
-# invalid descriptor
+# invalid descriptors
 try:
     print(uctypes.sizeof([]))
 except TypeError:
     print("TypeError")
+
+try:
+    print(uctypes.sizeof(()))
+except TypeError:
+    print("TypeError")
+
+try:
+    print(uctypes.sizeof(("garbage",)))
+except TypeError:
+    print("TypeError")
+
+try:
+    # PTR * 3 is intended to be an invalid agg_type (STRUCT, PTR, ARRAY are valid ones).
+    print(uctypes.sizeof((uctypes.PTR * 3,)))
+except TypeError:
+    print("TypeError")
+
+try:
+    print(uctypes.sizeof((0, {}, "garbage")))
+except TypeError:
+    print("TypeError")
+
+try:
+    print(uctypes.sizeof((uctypes.PTR | 0,)))
+except TypeError:
+    print("TypeError")
+
+try:
+    print(uctypes.sizeof((uctypes.ARRAY | 0,)))
+except TypeError:
+    print("TypeError")
+
+try:
+    print(uctypes.sizeof((uctypes.ARRAY | 0, 1, {}, "garbage")))
+except TypeError:
+    print("TypeError")
+
+# empty descriptor
+print(uctypes.sizeof({}))

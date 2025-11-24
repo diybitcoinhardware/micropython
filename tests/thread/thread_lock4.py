@@ -2,17 +2,16 @@
 #
 # MIT license; Copyright (c) 2016 Damien P. George on behalf of Pycom Ltd
 
-try:
-    import utime as time
-except ImportError:
-    import time
+import time
 import _thread
+
 
 def fac(n):
     x = 1
     for i in range(1, n + 1):
         x *= i
     return x
+
 
 def thread_entry():
     while True:
@@ -25,6 +24,7 @@ def thread_entry():
         with output_lock:
             output.append((arg, ans))
 
+
 # create a list of jobs
 jobs = [(fac, i) for i in range(20, 80)]
 jobs_lock = _thread.allocate_lock()
@@ -36,14 +36,18 @@ output_lock = _thread.allocate_lock()
 
 # spawn threads to do the jobs
 for i in range(4):
-    _thread.start_new_thread(thread_entry, ())
+    try:
+        _thread.start_new_thread(thread_entry, ())
+    except OSError:
+        # System cannot create a new thead, so stop trying to create them.
+        break
 
 # wait for the jobs to complete
 while True:
     with jobs_lock:
         if len(output) == n_jobs:
             break
-    time.sleep(1)
+    time.sleep(0)
 
 # sort and print the results
 output.sort(key=lambda x: x[0])

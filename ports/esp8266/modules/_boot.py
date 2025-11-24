@@ -1,13 +1,15 @@
 import gc
+
 gc.threshold((gc.mem_free() + gc.mem_alloc()) // 4)
-import uos
+import vfs
 from flashbdev import bdev
 
-try:
-    if bdev:
-        uos.mount(bdev, '/')
-except OSError:
-    import inisetup
-    inisetup.setup()
+if bdev:
+    try:
+        vfs.mount(bdev, "/")
+    except:
+        import inisetup
+
+        inisetup.setup()
 
 gc.collect()

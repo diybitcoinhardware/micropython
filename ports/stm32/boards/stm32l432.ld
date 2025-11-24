@@ -6,7 +6,7 @@
 MEMORY
 {
     FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 230K /* sectors 0-114 */
-    FLASH_FS (r)    : ORIGIN = 0x08060000, LENGTH = 26K /* sectors 115-127 */
+    FLASH_FS (r)    : ORIGIN = 0x08039800, LENGTH = 26K /* sectors 115-127 */
     RAM (xrw)       : ORIGIN = 0x20000000, LENGTH = 64K /* SRAM1, 48K + SRAM2, 16K */
 }
 
@@ -21,14 +21,14 @@ _minimum_heap_size = 16K;
 _ram_start = ORIGIN(RAM);
 _ram_end = ORIGIN(RAM) + LENGTH(RAM);
 
-_ram_fs_cache_end = _ram_end;
-_ram_fs_cache_start = _ram_fs_cache_end - 2K; /* fs cache = 2K */
+_micropy_hw_internal_flash_storage_ram_cache_end = _ram_end;
+_micropy_hw_internal_flash_storage_ram_cache_start = _micropy_hw_internal_flash_storage_ram_cache_end - 2K; /* fs cache = 2K */
 
-_estack = _ram_fs_cache_start - _estack_reserve;
+_estack = _micropy_hw_internal_flash_storage_ram_cache_start - _estack_reserve;
 _sstack = _estack - 10K; /* stack = 10K */
 
 _heap_start = _ebss; /* heap starts just after statically allocated memory */
 _heap_end = _sstack; /* bss + heap = 52K, tunable by adjusting stack size */
 
-_flash_fs_start = ORIGIN(FLASH_FS);
-_flash_fs_end   = ORIGIN(FLASH_FS) + LENGTH(FLASH_FS);
+_micropy_hw_internal_flash_storage_start = ORIGIN(FLASH_FS);
+_micropy_hw_internal_flash_storage_end   = ORIGIN(FLASH_FS) + LENGTH(FLASH_FS);

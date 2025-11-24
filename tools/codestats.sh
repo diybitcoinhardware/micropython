@@ -23,7 +23,7 @@ AWK=awk
 MAKE="make -j2"
 
 # these are the binaries that are built; some have 2 or 3 depending on version
-bin_unix=ports/unix/micropython
+bin_unix=ports/unix/build-standard/micropython
 bin_stm32=ports/stm32/build-PYBV10/firmware.elf
 bin_barearm_1=ports/bare-arm/build/flash.elf
 bin_barearm_2=ports/bare-arm/build/firmware.elf
@@ -116,7 +116,7 @@ index 77d2945..dae0644 100644
 @@ -55,10 +55,8 @@ void msec_sleep_tv(struct timeval *tv) {
  #define MP_CLOCKS_PER_SEC CLOCKS_PER_SEC
  #endif
- 
+
 -#if defined(MP_CLOCKS_PER_SEC) && (MP_CLOCKS_PER_SEC == 1000000) // POSIX
 -#define CLOCK_DIV 1000.0
 -#elif defined(MP_CLOCKS_PER_SEC) && (MP_CLOCKS_PER_SEC == 1000) // WIN32

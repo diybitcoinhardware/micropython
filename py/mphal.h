@@ -26,12 +26,21 @@
 #ifndef MICROPY_INCLUDED_PY_MPHAL_H
 #define MICROPY_INCLUDED_PY_MPHAL_H
 
+#include <stdint.h>
 #include "py/mpconfig.h"
 
 #ifdef MICROPY_MPHALPORT_H
 #include MICROPY_MPHALPORT_H
 #else
 #include <mphalport.h>
+#endif
+
+// On embedded platforms, these will typically enable/disable irqs.
+#ifndef MICROPY_BEGIN_ATOMIC_SECTION
+#define MICROPY_BEGIN_ATOMIC_SECTION() (0)
+#endif
+#ifndef MICROPY_END_ATOMIC_SECTION
+#define MICROPY_END_ATOMIC_SECTION(state) (void)(state)
 #endif
 
 #ifndef mp_hal_stdio_poll
@@ -47,7 +56,7 @@ void mp_hal_stdout_tx_str(const char *str);
 #endif
 
 #ifndef mp_hal_stdout_tx_strn
-void mp_hal_stdout_tx_strn(const char *str, size_t len);
+mp_uint_t mp_hal_stdout_tx_strn(const char *str, size_t len);
 #endif
 
 #ifndef mp_hal_stdout_tx_strn_cooked
@@ -74,6 +83,11 @@ mp_uint_t mp_hal_ticks_us(void);
 mp_uint_t mp_hal_ticks_cpu(void);
 #endif
 
+#ifndef mp_hal_time_ns
+// Nanoseconds since the Epoch.
+uint64_t mp_hal_time_ns(void);
+#endif
+
 // If port HAL didn't define its own pin API, use generic
 // "virtual pin" API from the core.
 #ifndef mp_hal_pin_obj_t
@@ -82,6 +96,19 @@ mp_uint_t mp_hal_ticks_cpu(void);
 #define mp_hal_pin_read(pin) mp_virtual_pin_read(pin)
 #define mp_hal_pin_write(pin, v) mp_virtual_pin_write(pin, v)
 #include "extmod/virtpin.h"
+#endif
+
+// Event handling and wait-for-event functions.
+
+#ifndef MICROPY_INTERNAL_WFE
+// Fallback definition for ports that don't need to suspend the CPU.
+#define MICROPY_INTERNAL_WFE(TIMEOUT_MS) (void)0
+#endif
+
+#ifndef MICROPY_INTERNAL_EVENT_HOOK
+// Fallback definition for ports that don't need any port-specific
+// non-blocking event processing.
+#define MICROPY_INTERNAL_EVENT_HOOK (void)0
 #endif
 
 #endif // MICROPY_INCLUDED_PY_MPHAL_H

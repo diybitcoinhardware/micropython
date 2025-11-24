@@ -10,6 +10,8 @@ execution of ``boot.py`` and ``main.py`` and gives default USB settings.
 If you have problems with the filesystem you can do a factory reset,
 which restores the filesystem to its original state.
 
+For more information, see :doc:`/reference/reset_boot`.
+
 Safe mode
 ---------
 
@@ -21,7 +23,7 @@ To enter safe mode, do the following steps:
 4. The LEDs will then cycle green to orange to green+orange and back again.
 5. Keep holding down USR until *only the orange LED is lit*, and then let
    go of the USR switch.
-6. The orange LED should flash quickly 4 times, and then turn off.  
+6. The orange LED should flash quickly 4 times, and then turn off.
 7. You are now in safe mode.
 
 In safe mode, the ``boot.py`` and ``main.py`` files are not executed, and so

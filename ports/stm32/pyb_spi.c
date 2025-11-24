@@ -25,25 +25,27 @@
  */
 
 #include "py/runtime.h"
-#include "extmod/machine_spi.h"
+#include "extmod/modmachine.h"
 #include "bufhelper.h"
 #include "spi.h"
+
+#if MICROPY_PY_PYB
 
 /******************************************************************************/
 // MicroPython bindings for legacy pyb API
 
-// class pyb.SPI - a master-driven serial protocol
+// class pyb.SPI - a controller-driven serial protocol
 //
-// SPI is a serial protocol that is driven by a master.  At the physical level
+// SPI is a serial protocol that is driven by a controller.  At the physical level
 // there are 3 lines: SCK, MOSI, MISO.
 //
 // See usage model of I2C; SPI is very similar.  Main difference is
 // parameters to init the SPI bus:
 //
 //     from pyb import SPI
-//     spi = SPI(1, SPI.MASTER, baudrate=600000, polarity=1, phase=0, crc=0x7)
+//     spi = SPI(1, SPI.CONTROLLER, baudrate=600000, polarity=1, phase=0, crc=0x7)
 //
-// Only required parameter is mode, SPI.MASTER or SPI.SLAVE.  Polarity can be
+// Only required parameter is mode, SPI.CONTROLLER or SPI.PERIPHERAL.  Polarity can be
 // 0 or 1, and is the level the idle clock line sits at.  Phase can be 0 or 1
 // to sample data on the first or second clock edge respectively.  Crc can be
 // None for no CRC, or a polynomial specifier.
@@ -55,7 +57,7 @@
 //     spi.send_recv(b'1234', buf)          # send 4 bytes and receive 4 into buf
 //     spi.send_recv(buf, buf)              # send/recv 4 bytes from/to buf
 
-STATIC const pyb_spi_obj_t pyb_spi_obj[] = {
+static const pyb_spi_obj_t pyb_spi_obj[] = {
     {{&pyb_spi_type}, &spi_obj[0]},
     {{&pyb_spi_type}, &spi_obj[1]},
     {{&pyb_spi_type}, &spi_obj[2]},
@@ -64,7 +66,7 @@ STATIC const pyb_spi_obj_t pyb_spi_obj[] = {
     {{&pyb_spi_type}, &spi_obj[5]},
 };
 
-STATIC void pyb_spi_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
+static void pyb_spi_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
     pyb_spi_obj_t *self = MP_OBJ_TO_PTR(self_in);
     spi_print(print, self->spi, true);
 }
@@ -72,9 +74,9 @@ STATIC void pyb_spi_print(const mp_print_t *print, mp_obj_t self_in, mp_print_ki
 // init(mode, baudrate=328125, *, polarity=1, phase=0, bits=8, firstbit=SPI.MSB, ti=False, crc=None)
 //
 // Initialise the SPI bus with the given parameters:
-//   - `mode` must be either `SPI.MASTER` or `SPI.SLAVE`.
-//   - `baudrate` is the SCK clock rate (only sensible for a master).
-STATIC mp_obj_t pyb_spi_init_helper(const pyb_spi_obj_t *self, size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+//   - `mode` must be either `SPI.CONTROLLER` or `SPI.PERIPHERAL`.
+//   - `baudrate` is the SCK clock rate (only sensible for a controller).
+static mp_obj_t pyb_spi_init_helper(const pyb_spi_obj_t *self, size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_mode,     MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0} },
         { MP_QSTR_baudrate, MP_ARG_INT, {.u_int = 328125} },
@@ -112,7 +114,10 @@ STATIC mp_obj_t pyb_spi_init_helper(const pyb_spi_obj_t *self, size_t n_args, co
     }
 
     // init the SPI bus
-    spi_init(self->spi, init->NSS != SPI_NSS_SOFT);
+    int ret = spi_init(self->spi, init->NSS != SPI_NSS_SOFT);
+    if (ret != 0) {
+        mp_raise_OSError(-ret);
+    }
 
     return mp_const_none;
 }
@@ -125,13 +130,13 @@ STATIC mp_obj_t pyb_spi_init_helper(const pyb_spi_obj_t *self, size_t n_args, co
 // the bus, if any).  If extra arguments are given, the bus is initialised.
 // See `init` for parameters of initialisation.
 //
-// The physical pins of the SPI busses are:
+// The physical pins of the SPI buses are:
 //   - `SPI(1)` is on the X position: `(NSS, SCK, MISO, MOSI) = (X5, X6, X7, X8) = (PA4, PA5, PA6, PA7)`
 //   - `SPI(2)` is on the Y position: `(NSS, SCK, MISO, MOSI) = (Y5, Y6, Y7, Y8) = (PB12, PB13, PB14, PB15)`
 //
 // At the moment, the NSS pin is not used by the SPI driver and is free
 // for other use.
-STATIC mp_obj_t pyb_spi_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
+static mp_obj_t pyb_spi_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
     // check arguments
     mp_arg_check_num(n_args, n_kw, 1, MP_OBJ_FUN_ARGS_MAX, true);
 
@@ -151,19 +156,19 @@ STATIC mp_obj_t pyb_spi_make_new(const mp_obj_type_t *type, size_t n_args, size_
     return MP_OBJ_FROM_PTR(spi_obj);
 }
 
-STATIC mp_obj_t pyb_spi_init(size_t n_args, const mp_obj_t *args, mp_map_t *kw_args) {
+static mp_obj_t pyb_spi_init(size_t n_args, const mp_obj_t *args, mp_map_t *kw_args) {
     return pyb_spi_init_helper(MP_OBJ_TO_PTR(args[0]), n_args - 1, args + 1, kw_args);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_init_obj, 1, pyb_spi_init);
+static MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_init_obj, 1, pyb_spi_init);
 
 // deinit()
 // Turn off the SPI bus.
-STATIC mp_obj_t pyb_spi_deinit(mp_obj_t self_in) {
+static mp_obj_t pyb_spi_deinit(mp_obj_t self_in) {
     pyb_spi_obj_t *self = MP_OBJ_TO_PTR(self_in);
     spi_deinit(self->spi);
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_spi_deinit_obj, pyb_spi_deinit);
+static MP_DEFINE_CONST_FUN_OBJ_1(pyb_spi_deinit_obj, pyb_spi_deinit);
 
 // send(send, *, timeout=5000)
 // Send data on the bus:
@@ -171,7 +176,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_spi_deinit_obj, pyb_spi_deinit);
 //   - `timeout` is the timeout in milliseconds to wait for the send.
 //
 // Return value: `None`.
-STATIC mp_obj_t pyb_spi_send(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+static mp_obj_t pyb_spi_send(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     // TODO assumes transmission size is 8-bits wide
 
     static const mp_arg_t allowed_args[] = {
@@ -194,7 +199,7 @@ STATIC mp_obj_t pyb_spi_send(size_t n_args, const mp_obj_t *pos_args, mp_map_t *
 
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_send_obj, 1, pyb_spi_send);
+static MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_send_obj, 1, pyb_spi_send);
 
 // recv(recv, *, timeout=5000)
 //
@@ -205,7 +210,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_send_obj, 1, pyb_spi_send);
 //
 // Return value: if `recv` is an integer then a new buffer of the bytes received,
 // otherwise the same buffer that was passed in to `recv`.
-STATIC mp_obj_t pyb_spi_recv(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+static mp_obj_t pyb_spi_recv(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     // TODO assumes transmission size is 8-bits wide
 
     static const mp_arg_t allowed_args[] = {
@@ -223,16 +228,16 @@ STATIC mp_obj_t pyb_spi_recv(size_t n_args, const mp_obj_t *pos_args, mp_map_t *
     mp_obj_t o_ret = pyb_buf_get_for_recv(args[0].u_obj, &vstr);
 
     // receive the data
-    spi_transfer(self->spi, vstr.len, NULL, (uint8_t*)vstr.buf, args[1].u_int);
+    spi_transfer(self->spi, vstr.len, NULL, (uint8_t *)vstr.buf, args[1].u_int);
 
     // return the received data
     if (o_ret != MP_OBJ_NULL) {
         return o_ret;
     } else {
-        return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr);
+        return mp_obj_new_bytes_from_vstr(&vstr);
     }
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_recv_obj, 1, pyb_spi_recv);
+static MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_recv_obj, 1, pyb_spi_recv);
 
 // send_recv(send, recv=None, *, timeout=5000)
 //
@@ -244,7 +249,7 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_recv_obj, 1, pyb_spi_recv);
 //   - `timeout` is the timeout in milliseconds to wait for the receive.
 //
 // Return value: the buffer with the received bytes.
-STATIC mp_obj_t pyb_spi_send_recv(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+static mp_obj_t pyb_spi_send_recv(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     // TODO assumes transmission size is 8-bits wide
 
     static const mp_arg_t allowed_args[] = {
@@ -285,7 +290,7 @@ STATIC mp_obj_t pyb_spi_send_recv(size_t n_args, const mp_obj_t *pos_args, mp_ma
             // recv argument given
             mp_get_buffer_raise(args[1].u_obj, &bufinfo_recv, MP_BUFFER_WRITE);
             if (bufinfo_recv.len != bufinfo_send.len) {
-                mp_raise_ValueError("recv must be same length as send");
+                mp_raise_ValueError(MP_ERROR_TEXT("recv must be same length as send"));
             }
             o_ret = args[1].u_obj;
         }
@@ -298,12 +303,12 @@ STATIC mp_obj_t pyb_spi_send_recv(size_t n_args, const mp_obj_t *pos_args, mp_ma
     if (o_ret != MP_OBJ_NULL) {
         return o_ret;
     } else {
-        return mp_obj_new_str_from_vstr(&mp_type_bytes, &vstr_recv);
+        return mp_obj_new_bytes_from_vstr(&vstr_recv);
     }
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_send_recv_obj, 1, pyb_spi_send_recv);
+static MP_DEFINE_CONST_FUN_OBJ_KW(pyb_spi_send_recv_obj, 1, pyb_spi_send_recv);
 
-STATIC const mp_rom_map_elem_t pyb_spi_locals_dict_table[] = {
+static const mp_rom_map_elem_t pyb_spi_locals_dict_table[] = {
     // instance methods
     { MP_ROM_QSTR(MP_QSTR_init), MP_ROM_PTR(&pyb_spi_init_obj) },
     { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&pyb_spi_deinit_obj) },
@@ -319,10 +324,13 @@ STATIC const mp_rom_map_elem_t pyb_spi_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_send_recv), MP_ROM_PTR(&pyb_spi_send_recv_obj) },
 
     // class constants
-    /// \constant MASTER - for initialising the bus to master mode
-    /// \constant SLAVE - for initialising the bus to slave mode
+    /// \constant CONTROLLER - for initialising the bus to controller mode
+    /// \constant PERIPHERAL - for initialising the bus to peripheral mode
     /// \constant MSB - set the first bit to MSB
     /// \constant LSB - set the first bit to LSB
+    { MP_ROM_QSTR(MP_QSTR_CONTROLLER), MP_ROM_INT(SPI_MODE_MASTER) },
+    { MP_ROM_QSTR(MP_QSTR_PERIPHERAL),  MP_ROM_INT(SPI_MODE_SLAVE) },
+    // TODO - remove MASTER/SLAVE when CONTROLLER/PERIPHERAL gain wide adoption
     { MP_ROM_QSTR(MP_QSTR_MASTER), MP_ROM_INT(SPI_MODE_MASTER) },
     { MP_ROM_QSTR(MP_QSTR_SLAVE),  MP_ROM_INT(SPI_MODE_SLAVE) },
     { MP_ROM_QSTR(MP_QSTR_MSB),    MP_ROM_INT(SPI_FIRSTBIT_MSB) },
@@ -336,22 +344,25 @@ STATIC const mp_rom_map_elem_t pyb_spi_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_NSS_HARD_OUTPUT             ((uint32_t)0x00040000)
     */
 };
-STATIC MP_DEFINE_CONST_DICT(pyb_spi_locals_dict, pyb_spi_locals_dict_table);
+static MP_DEFINE_CONST_DICT(pyb_spi_locals_dict, pyb_spi_locals_dict_table);
 
-STATIC void spi_transfer_machine(mp_obj_base_t *self_in, size_t len, const uint8_t *src, uint8_t *dest) {
-    pyb_spi_obj_t *self = (pyb_spi_obj_t*)self_in;
+static void spi_transfer_machine(mp_obj_base_t *self_in, size_t len, const uint8_t *src, uint8_t *dest) {
+    pyb_spi_obj_t *self = (pyb_spi_obj_t *)self_in;
     spi_transfer(self->spi, len, src, dest, SPI_TRANSFER_TIMEOUT(len));
 }
 
-STATIC const mp_machine_spi_p_t pyb_spi_p = {
+static const mp_machine_spi_p_t pyb_spi_p = {
     .transfer = spi_transfer_machine,
 };
 
-const mp_obj_type_t pyb_spi_type = {
-    { &mp_type_type },
-    .name = MP_QSTR_SPI,
-    .print = pyb_spi_print,
-    .make_new = pyb_spi_make_new,
-    .protocol = &pyb_spi_p,
-    .locals_dict = (mp_obj_dict_t*)&pyb_spi_locals_dict,
-};
+MP_DEFINE_CONST_OBJ_TYPE(
+    pyb_spi_type,
+    MP_QSTR_SPI,
+    MP_TYPE_FLAG_NONE,
+    make_new, pyb_spi_make_new,
+    print, pyb_spi_print,
+    protocol, &pyb_spi_p,
+    locals_dict, &pyb_spi_locals_dict
+    );
+
+#endif // MICROPY_PY_PYB

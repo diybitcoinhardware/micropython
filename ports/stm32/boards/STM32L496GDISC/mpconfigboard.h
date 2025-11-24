@@ -4,7 +4,6 @@
 #define MICROPY_HW_HAS_SWITCH       (1)
 #define MICROPY_HW_ENABLE_RNG       (1)
 #define MICROPY_HW_ENABLE_RTC       (1)
-#define MICROPY_HW_ENABLE_TIMER     (1)
 #define MICROPY_HW_ENABLE_USB       (1)
 
 // MSI is used and is 4MHz,
@@ -26,13 +25,13 @@
 #define MICROPY_HW_UART_REPL        PYB_UART_2
 #define MICROPY_HW_UART_REPL_BAUD   115200
 
-// I2C busses
+// I2C buses
 #define MICROPY_HW_I2C1_SCL (pin_G14)
 #define MICROPY_HW_I2C1_SDA (pin_G13)
 #define MICROPY_HW_I2C2_SCL (pin_H4)
 #define MICROPY_HW_I2C2_SDA (pin_B14)
 
-// SPI busses
+// SPI buses
 // -> To the arduino connector
 #define MICROPY_HW_SPI1_NSS     (pin_A15)
 #define MICROPY_HW_SPI1_SCK     (pin_A5)

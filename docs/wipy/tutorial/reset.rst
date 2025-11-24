@@ -1,10 +1,10 @@
 Reset and boot modes
 ====================
 
-There are soft resets and hard resets. 
+There are soft resets and hard resets.
 
-   - A soft reset simply clears the state of the MicroPython virtual machine, 
-     but leaves hardware peripherals unaffected. To do a soft reset, simply press 
+   - A soft reset simply clears the state of the MicroPython virtual machine,
+     but leaves hardware peripherals unaffected. To do a soft reset, simply press
      **Ctrl+D** on the REPL, or within a script do::
 
         import sys
@@ -15,6 +15,8 @@ There are soft resets and hard resets.
 
         import machine
         machine.reset()
+
+For more information, see :doc:`/reference/reset_boot`.
 
 Safe boot
 ---------

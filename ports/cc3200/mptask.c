@@ -33,7 +33,7 @@
 #include "py/runtime.h"
 #include "py/gc.h"
 #include "py/mphal.h"
-#include "lib/mp-readline/readline.h"
+#include "shared/readline/readline.h"
 #include "lib/oofatfs/ff.h"
 #include "lib/oofatfs/diskio.h"
 #include "extmod/vfs.h"
@@ -49,13 +49,13 @@
 #include "pybuart.h"
 #include "pybpin.h"
 #include "pybrtc.h"
-#include "lib/utils/pyexec.h"
-#include "lib/utils/gchelper.h"
+#include "shared/runtime/pyexec.h"
+#include "shared/runtime/gchelper.h"
 #include "gccollect.h"
 #include "mperror.h"
 #include "simplelink.h"
 #include "modnetwork.h"
-#include "modusocket.h"
+#include "modsocket.h"
 #include "modwlan.h"
 #include "serverstask.h"
 #include "telnet.h"
@@ -70,7 +70,6 @@
 #include "cryptohash.h"
 #include "mpirq.h"
 #include "updater.h"
-#include "moduos.h"
 #include "antenna.h"
 #include "task.h"
 
@@ -81,16 +80,16 @@
 /******************************************************************************
  DECLARE PRIVATE FUNCTIONS
  ******************************************************************************/
-STATIC void mptask_pre_init (void);
-STATIC void mptask_init_sflash_filesystem (void);
-STATIC void mptask_enter_ap_mode (void);
-STATIC void mptask_create_main_py (void);
+static void mptask_pre_init(void);
+static void mptask_init_sflash_filesystem(void);
+static void mptask_enter_ap_mode(void);
+static void mptask_create_main_py(void);
 
 /******************************************************************************
  DECLARE PUBLIC DATA
  ******************************************************************************/
 #ifdef DEBUG
-OsiTaskHandle   svTaskHandle;
+OsiTaskHandle svTaskHandle;
 #endif
 
 /******************************************************************************
@@ -99,28 +98,30 @@ OsiTaskHandle   svTaskHandle;
 static fs_user_mount_t *sflash_vfs_fat;
 
 static const char fresh_main_py[] = "# main.py -- put your code here!\r\n";
-static const char fresh_boot_py[] = "# boot.py -- run on boot-up\r\n"
-                                    "# can run arbitrary Python, but best to keep it minimal\r\n"
+static const char fresh_boot_py[] = "# boot.py -- run on boot to configure USB and filesystem\r\n"
+    "# Put app code in main.py\r\n"
                                     #if MICROPY_STDIO_UART
-                                    "import os, machine\r\n"
-                                    "os.dupterm(machine.UART(0, " MP_STRINGIFY(MICROPY_STDIO_UART_BAUD) "))\r\n"
+    "import os, machine\r\n"
+    "os.dupterm(machine.UART(0, " MP_STRINGIFY(MICROPY_STDIO_UART_BAUD) "))\r\n"
                                     #endif
-                                    ;
+;
 
 /******************************************************************************
  DECLARE PUBLIC FUNCTIONS
  ******************************************************************************/
 
-void TASK_MicroPython (void *pvParameters) {
+uintptr_t cortex_m3_get_sp(void);
+
+void TASK_MicroPython(void *pvParameters) {
     // get the top of the stack to initialize the garbage collector
-    uint32_t sp = gc_helper_get_sp();
+    uint32_t sp = cortex_m3_get_sp();
 
     bool safeboot = false;
     mptask_pre_init();
 
-#ifndef DEBUG
+    #ifndef DEBUG
     safeboot = PRCMGetSpecialBit(PRCM_SAFE_BOOT_BIT);
-#endif
+    #endif
 
 soft_reset:
 
@@ -130,16 +131,13 @@ soft_reset:
     #endif
 
     // initialise the stack pointer for the main thread (must be done after mp_thread_init)
-    mp_stack_set_top((void*)sp);
+    mp_stack_set_top((void *)sp);
 
     // GC init
     gc_init(&_boot, &_eheap);
 
     // MicroPython init
     mp_init();
-    mp_obj_list_init(mp_sys_path, 0);
-    mp_obj_list_init(mp_sys_argv, 0);
-    mp_obj_list_append(mp_sys_path, MP_OBJ_NEW_QSTR(MP_QSTR_)); // current dir (or base dir of the script)
 
     // execute all basic initializations
     mp_irq_init0();
@@ -158,9 +156,8 @@ soft_reset:
             // when waking up from hibernate we just want
             // to enable simplelink and leave it as is
             wlan_first_start();
-        }
-        else {
-            // only if not comming out of hibernate or a soft reset
+        } else {
+            // only if not coming out of hibernate or a soft reset
             mptask_enter_ap_mode();
         }
 
@@ -218,7 +215,7 @@ soft_reset:
 
     // main script is finished, so now go into REPL mode.
     // the REPL mode can change, or it can request a soft reset.
-    for ( ; ; ) {
+    for ( ; ;) {
         if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {
             if (pyexec_raw_repl() != 0) {
                 break;
@@ -249,9 +246,6 @@ soft_reset_exit:
     // clean-up the user socket space
     modusocket_close_all_user_sockets();
 
-    // unmount all user file systems
-    osmount_unmount_all();
-
     // wait for pending transactions to complete
     mp_hal_delay_ms(20);
 
@@ -261,16 +255,16 @@ soft_reset_exit:
 /******************************************************************************
  DEFINE PRIVATE FUNCTIONS
  ******************************************************************************/
-__attribute__ ((section (".boot")))
-STATIC void mptask_pre_init (void) {
+__attribute__ ((section(".boot")))
+static void mptask_pre_init(void) {
     // this one only makes sense after a poweron reset
     pyb_rtc_pre_init();
 
     // Create the simple link spawn task
-    ASSERT (OSI_OK == VStartSimpleLinkSpawnTask(SIMPLELINK_SPAWN_TASK_PRIORITY));
+    ASSERT(OSI_OK == VStartSimpleLinkSpawnTask(SIMPLELINK_SPAWN_TASK_PRIORITY));
 
     // Allocate memory for the flash file system
-    ASSERT ((sflash_vfs_fat = mem_Malloc(sizeof(*sflash_vfs_fat))) != NULL);
+    ASSERT((sflash_vfs_fat = mem_Malloc(sizeof(*sflash_vfs_fat))) != NULL);
 
     // this one allocates memory for the nvic vault
     pyb_sleep_pre_init();
@@ -284,17 +278,17 @@ STATIC void mptask_pre_init (void) {
     // this one allocates memory for the socket semaphore
     modusocket_pre_init();
 
-    //CRYPTOHASH_Init();
+    // CRYPTOHASH_Init();
 
-#ifndef DEBUG
+    #ifndef DEBUG
     OsiTaskHandle svTaskHandle;
-#endif
+    #endif
     svTaskHandle = xTaskCreateStatic(TASK_Servers, "Servers",
         SERVERS_STACK_LEN, NULL, SERVERS_PRIORITY, svTaskStack, &svTaskTCB);
     ASSERT(svTaskHandle != NULL);
 }
 
-STATIC void mptask_init_sflash_filesystem (void) {
+static void mptask_init_sflash_filesystem(void) {
     FILINFO fno;
 
     // Initialise the local flash filesystem.
@@ -317,7 +311,7 @@ STATIC void mptask_init_sflash_filesystem (void) {
         // create empty main.py
         mptask_create_main_py();
     } else if (res == FR_OK) {
-        // mount sucessful
+        // mount successful
         if (FR_OK != f_stat(&vfs_fat->fatfs, "/main.py", &fno)) {
             // create empty main.py
             mptask_create_main_py();
@@ -377,16 +371,16 @@ STATIC void mptask_init_sflash_filesystem (void) {
     }
 }
 
-STATIC void mptask_enter_ap_mode (void) {
+static void mptask_enter_ap_mode(void) {
     // append the mac only if it's not the first boot
     bool add_mac = !PRCMGetSpecialBit(PRCM_FIRST_BOOT_BIT);
     // enable simplelink in ap mode (use the MAC address to make the ssid unique)
-    wlan_sl_init (ROLE_AP, MICROPY_PORT_WLAN_AP_SSID, strlen(MICROPY_PORT_WLAN_AP_SSID),
-                  MICROPY_PORT_WLAN_AP_SECURITY, MICROPY_PORT_WLAN_AP_KEY, strlen(MICROPY_PORT_WLAN_AP_KEY),
-                  MICROPY_PORT_WLAN_AP_CHANNEL, ANTENNA_TYPE_INTERNAL, add_mac);
+    wlan_sl_init(ROLE_AP, MICROPY_PORT_WLAN_AP_SSID, strlen(MICROPY_PORT_WLAN_AP_SSID),
+        MICROPY_PORT_WLAN_AP_SECURITY, MICROPY_PORT_WLAN_AP_KEY, strlen(MICROPY_PORT_WLAN_AP_KEY),
+        MICROPY_PORT_WLAN_AP_CHANNEL, ANTENNA_TYPE_INTERNAL, add_mac);
 }
 
-STATIC void mptask_create_main_py (void) {
+static void mptask_create_main_py(void) {
     // create empty main.py
     FIL fp;
     f_open(&sflash_vfs_fat->fatfs, &fp, "/main.py", FA_WRITE | FA_CREATE_ALWAYS);

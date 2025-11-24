@@ -68,7 +68,7 @@ typedef struct _pyb_switch_obj_t {
     mp_obj_base_t base;
 } pyb_switch_obj_t;
 
-STATIC const pyb_switch_obj_t pyb_switch_obj = {{&pyb_switch_type}};
+static const pyb_switch_obj_t pyb_switch_obj = {{&pyb_switch_type}};
 
 void pyb_switch_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
     mp_print_str(print, "Switch()");
@@ -76,7 +76,7 @@ void pyb_switch_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t
 
 /// \classmethod \constructor()
 /// Create and return a switch object.
-STATIC mp_obj_t pyb_switch_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
+static mp_obj_t pyb_switch_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
     // check arguments
     mp_arg_check_num(n_args, n_kw, 0, 0, false);
 
@@ -100,15 +100,15 @@ mp_obj_t pyb_switch_value(mp_obj_t self_in) {
     (void)self_in;
     return mp_obj_new_bool(switch_get());
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_switch_value_obj, pyb_switch_value);
+static MP_DEFINE_CONST_FUN_OBJ_1(pyb_switch_value_obj, pyb_switch_value);
 
-STATIC mp_obj_t switch_callback(mp_obj_t line) {
+static mp_obj_t switch_callback(mp_obj_t line) {
     if (MP_STATE_PORT(pyb_switch_callback) != mp_const_none) {
         mp_call_function_0(MP_STATE_PORT(pyb_switch_callback));
     }
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(switch_callback_obj, switch_callback);
+static MP_DEFINE_CONST_FUN_OBJ_1(switch_callback_obj, switch_callback);
 
 /// \method callback(fun)
 /// Register the given function to be called when the switch is pressed down.
@@ -119,28 +119,31 @@ mp_obj_t pyb_switch_callback(mp_obj_t self_in, mp_obj_t callback) {
     // may have been disabled by an exception in the interrupt, or the
     // user disabling the line explicitly.
     extint_register(MP_OBJ_FROM_PTR(MICROPY_HW_USRSW_PIN),
-                    MICROPY_HW_USRSW_EXTI_MODE,
-                    MICROPY_HW_USRSW_PULL,
-                    callback == mp_const_none ? mp_const_none : MP_OBJ_FROM_PTR(&switch_callback_obj),
-                    true);
+        MICROPY_HW_USRSW_EXTI_MODE,
+        MICROPY_HW_USRSW_PULL,
+        callback == mp_const_none ? mp_const_none : MP_OBJ_FROM_PTR(&switch_callback_obj),
+        true);
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_2(pyb_switch_callback_obj, pyb_switch_callback);
+static MP_DEFINE_CONST_FUN_OBJ_2(pyb_switch_callback_obj, pyb_switch_callback);
 
-STATIC const mp_rom_map_elem_t pyb_switch_locals_dict_table[] = {
+static const mp_rom_map_elem_t pyb_switch_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_value), MP_ROM_PTR(&pyb_switch_value_obj) },
     { MP_ROM_QSTR(MP_QSTR_callback), MP_ROM_PTR(&pyb_switch_callback_obj) },
 };
 
-STATIC MP_DEFINE_CONST_DICT(pyb_switch_locals_dict, pyb_switch_locals_dict_table);
+static MP_DEFINE_CONST_DICT(pyb_switch_locals_dict, pyb_switch_locals_dict_table);
 
-const mp_obj_type_t pyb_switch_type = {
-    { &mp_type_type },
-    .name = MP_QSTR_Switch,
-    .print = pyb_switch_print,
-    .make_new = pyb_switch_make_new,
-    .call = pyb_switch_call,
-    .locals_dict = (mp_obj_dict_t*)&pyb_switch_locals_dict,
-};
+MP_DEFINE_CONST_OBJ_TYPE(
+    pyb_switch_type,
+    MP_QSTR_Switch,
+    MP_TYPE_FLAG_NONE,
+    make_new, pyb_switch_make_new,
+    print, pyb_switch_print,
+    call, pyb_switch_call,
+    locals_dict, &pyb_switch_locals_dict
+    );
+
+MP_REGISTER_ROOT_POINTER(mp_obj_t pyb_switch_callback);
 
 #endif // MICROPY_HW_HAS_SWITCH

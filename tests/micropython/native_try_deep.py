@@ -1,5 +1,6 @@
 # test native try handling
 
+
 # deeply nested try (9 deep)
 @micropython.native
 def f():
@@ -30,5 +31,7 @@ def f():
         finally:
             print(1)
     except ValueError:
-        print('ValueError')
+        print("ValueError")
+
+
 f()

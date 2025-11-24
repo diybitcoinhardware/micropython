@@ -6,14 +6,17 @@ class WIZNET5K -- control WIZnet5x00 Ethernet modules
 
 This class allows you to control WIZnet5x00 Ethernet adaptors based on
 the W5200 and W5500 chipsets.  The particular chipset that is supported
-by the firmware is selected at compile-time via the MICROPY_PY_WIZNET5K
+by the firmware is selected at compile-time via the MICROPY_PY_NETWORK_WIZNET5K
 option.
+
+.. note:: The esp32 port also supports WIZnet W5500 chipsets, but this port
+          uses the :ref:`network.LAN interface <esp32_spi_ethernet>`.
 
 Example usage::
 
     import network
     nic = network.WIZNET5K(pyb.SPI(1), pyb.Pin.board.X5, pyb.Pin.board.X4)
-    print(nic.ifconfig())
+    print(nic.ipconfig("addr4"))
 
     # now use socket as usual
     ...
@@ -26,7 +29,7 @@ For this example to work the WIZnet5x00 module must have the following connectio
     - nSS connected to X5
     - nRESET connected to X4
 
-It is possible to use other SPI busses and other pins for nSS and nRESET.
+It is possible to use other SPI buses and other pins for nSS and nRESET.
 
 Constructors
 ------------
@@ -51,20 +54,7 @@ Constructors
 Methods
 -------
 
-.. method:: WIZNET5K.isconnected()
-
-   Returns ``True`` if the physical Ethernet link is connected and up.
-   Returns ``False`` otherwise.
-
-.. method:: WIZNET5K.ifconfig([(ip, subnet, gateway, dns)])
-
-   Get/set IP address, subnet mask, gateway and DNS.
-
-   When called with no arguments, this method returns a 4-tuple with the above information.
-
-   To set the above values, pass a 4-tuple with the required information.  For example::
-
-    nic.ifconfig(('192.168.0.4', '255.255.255.0', '192.168.0.1', '8.8.8.8'))
+This class implements most methods from `AbstractNIC <AbstractNIC>`, which are documented there. Additional methods are:
 
 .. method:: WIZNET5K.regs()
 

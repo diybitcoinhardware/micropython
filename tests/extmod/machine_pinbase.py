@@ -1,8 +1,6 @@
 try:
-    try:
-        import umachine as machine
-    except ImportError:
-        import machine
+    import machine
+
     machine.PinBase
 except:
     print("SKIP")
@@ -10,7 +8,6 @@ except:
 
 
 class MyPin(machine.PinBase):
-
     def __init__(self):
         print("__init__")
         self.v = False
@@ -20,6 +17,7 @@ class MyPin(machine.PinBase):
         if v is None:
             self.v = not self.v
             return int(self.v)
+
 
 p = MyPin()
 

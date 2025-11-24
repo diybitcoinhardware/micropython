@@ -18,7 +18,6 @@ APP_INC += -Iutil
 APP_INC += -Ibootmgr
 APP_INC += -I$(BUILD)
 APP_INC += -I$(BUILD)/genhdr
-APP_INC += -I$(TOP)/ports/stm32
 
 APP_CPPDEFINES = -Dgcc -DTARGET_IS_CC3200 -DSL_FULL -DUSE_FREERTOS
 
@@ -73,17 +72,12 @@ APP_MISC_SRC_C = $(addprefix misc/,\
 	help.c \
 	mpirq.c \
 	mperror.c \
-	mpexception.c \
 	)
 
 APP_MODS_SRC_C = $(addprefix mods/,\
-	modmachine.c \
 	modnetwork.c \
-	modubinascii.c \
-	moduos.c \
-	modusocket.c \
-	modussl.c \
-	modutime.c \
+	modsocket.c \
+	modssl.c \
 	modwipy.c \
 	modwlan.c \
 	pybadc.c \
@@ -96,7 +90,6 @@ APP_MODS_SRC_C = $(addprefix mods/,\
 	pybspi.c \
 	pybtimer.c \
 	pybuart.c \
-	pybwdt.c \
 	)
 
 APP_CC3100_SRC_C = $(addprefix drivers/cc3100/src/,\
@@ -113,12 +106,12 @@ APP_CC3100_SRC_C = $(addprefix drivers/cc3100/src/,\
 APP_SL_SRC_C = $(addprefix simplelink/,\
 	oslib/osi_freertos.c \
 	cc_pal.c \
-	) 
+	)
 
 APP_TELNET_SRC_C = $(addprefix telnet/,\
 	telnet.c \
 	)
-	
+
 APP_UTIL_SRC_C = $(addprefix util/,\
 	cryptohash.c \
 	fifo.c \
@@ -126,46 +119,48 @@ APP_UTIL_SRC_C = $(addprefix util/,\
 	random.c \
 	socketfifo.c \
 	)
-	
+
 APP_UTIL_SRC_S = $(addprefix util/,\
+	cortex_m3_get_sp.s \
 	sleeprestore.s \
 	)
-	
+
 APP_MAIN_SRC_C = \
 	main.c \
 	mptask.c \
 	mpthreadport.c \
 	serverstask.c \
 	fatfs_port.c \
-	
+
 APP_LIB_SRC_C = $(addprefix lib/,\
 	oofatfs/ff.c \
 	oofatfs/ffunicode.c \
+	)
+
+APP_SHARED_SRC_C = $(addprefix shared/,\
 	libc/string0.c \
-	mp-readline/readline.c \
+	readline/readline.c \
 	netutils/netutils.c \
 	timeutils/timeutils.c \
-	utils/pyexec.c \
-	utils/interrupt_char.c \
-	utils/sys_stdio_mphal.c \
+	runtime/gchelper_native.c \
+	runtime/pyexec.c \
+	runtime/interrupt_char.c \
+	runtime/stdout_helpers.c \
+	runtime/sys_stdio_mphal.c \
 	)
-	
+
 APP_STM_SRC_C = $(addprefix ports/stm32/,\
 	bufhelper.c \
-	irq.c \
 	)
 
 OBJ = $(PY_O) $(addprefix $(BUILD)/, $(APP_FATFS_SRC_C:.c=.o) $(APP_RTOS_SRC_C:.c=.o) $(APP_FTP_SRC_C:.c=.o) $(APP_HAL_SRC_C:.c=.o) $(APP_MISC_SRC_C:.c=.o))
 OBJ += $(addprefix $(BUILD)/, $(APP_MODS_SRC_C:.c=.o) $(APP_CC3100_SRC_C:.c=.o) $(APP_SL_SRC_C:.c=.o) $(APP_TELNET_SRC_C:.c=.o) $(APP_UTIL_SRC_C:.c=.o) $(APP_UTIL_SRC_S:.s=.o))
-OBJ += $(addprefix $(BUILD)/, $(APP_MAIN_SRC_C:.c=.o) $(APP_LIB_SRC_C:.c=.o) $(APP_STM_SRC_C:.c=.o))
-OBJ += $(BUILD)/lib/utils/gchelper_m3.o
+OBJ += $(addprefix $(BUILD)/, $(APP_MAIN_SRC_C:.c=.o) $(APP_SHARED_SRC_C:.c=.o) $(APP_LIB_SRC_C:.c=.o) $(APP_STM_SRC_C:.c=.o))
+OBJ += $(BUILD)/shared/runtime/gchelper_thumb2.o
 OBJ += $(BUILD)/pins.o
 
 # List of sources for qstr extraction
-SRC_QSTR += $(APP_MODS_SRC_C) $(APP_MISC_SRC_C) $(APP_STM_SRC_C)
-# Append any auto-generated sources that are needed by sources listed in
-# SRC_QSTR
-SRC_QSTR_AUTO_DEPS +=
+SRC_QSTR += $(APP_MODS_SRC_C) $(APP_MISC_SRC_C) $(APP_STM_SRC_C) $(APP_SHARED_SRC_C) $(APP_HAL_SRC_C) $(GEN_PINS_SRC)
 
 # Add the linker script
 LINKER_SCRIPT = application.lds
@@ -182,7 +177,7 @@ ifeq ($(BTYPE), release)
 CFLAGS += -DNDEBUG
 else
 ifeq ($(BTYPE), debug)
-CFLAGS += -DNDEBUG
+CFLAGS += -DDEBUG
 else
 $(error Invalid BTYPE specified)
 endif
@@ -195,7 +190,7 @@ WIPY_IP ?= '192.168.1.1'
 WIPY_USER ?= 'micro'
 WIPY_PWD ?= 'python'
 
-all: $(BUILD)/mcuimg.bin
+all: $(BUILD)/firmware.zip
 
 .PHONY: deploy-ota
 
@@ -216,13 +211,16 @@ $(BUILD)/mcuimg.bin: $(BUILD)/application.bin
 	$(ECHO) "Create $@"
 	$(Q)$(SHELL) $(APP_SIGN) $(BUILD)
 
+$(BUILD)/firmware.zip: $(BUILD)/mcuimg.bin
+	$(ECHO) "Create $@"
+	$(Q)$(ZIP) -j $@ $<
+
 MAKE_PINS = boards/make-pins.py
 BOARD_PINS = boards/$(BOARD)/pins.csv
 AF_FILE = boards/cc3200_af.csv
 PREFIX_FILE = boards/cc3200_prefix.c
 GEN_PINS_SRC = $(BUILD)/pins.c
 GEN_PINS_HDR = $(HEADER_BUILD)/pins.h
-GEN_PINS_QSTR = $(BUILD)/pins_qstr.h
 
 # Making OBJ use an order-only dependency on the generated pins.h file
 # has the side effect of making the pins.h file before we actually compile
@@ -232,9 +230,7 @@ GEN_PINS_QSTR = $(BUILD)/pins_qstr.h
 $(OBJ): | $(GEN_PINS_HDR)
 
 # Call make-pins.py to generate both pins_gen.c and pins.h
-$(GEN_PINS_SRC) $(GEN_PINS_HDR) $(GEN_PINS_QSTR): $(BOARD_PINS) $(MAKE_PINS) $(AF_FILE) $(PREFIX_FILE) | $(HEADER_BUILD)
+$(GEN_PINS_SRC) $(GEN_PINS_HDR): $(BOARD_PINS) $(MAKE_PINS) $(AF_FILE) $(PREFIX_FILE) | $(HEADER_BUILD)
 	$(ECHO) "Create $@"
-	$(Q)$(PYTHON) $(MAKE_PINS) --board $(BOARD_PINS) --af $(AF_FILE) --prefix $(PREFIX_FILE) --hdr $(GEN_PINS_HDR) --qstr $(GEN_PINS_QSTR) > $(GEN_PINS_SRC)
-
-$(BUILD)/pins.o: $(BUILD)/pins.c
-	$(call compile_c)
+	$(Q)$(PYTHON) $(MAKE_PINS) --board-csv $(BOARD_PINS) --af-csv $(AF_FILE) --prefix $(PREFIX_FILE) \
+	    --output-source $(GEN_PINS_SRC) --output-header $(GEN_PINS_HDR)

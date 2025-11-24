@@ -70,11 +70,11 @@ enum {
     ASYNC_MUSIC_STATE_ARTICULATE,
 };
 
-#define music_data MP_STATE_PORT(music_data)
+#define music_data MP_STATE_PORT(modmusic_music_data)
 
 extern volatile uint32_t ticks;
 
-STATIC uint32_t start_note(const char *note_str, size_t note_len, const pin_obj_t *pin);
+static uint32_t start_note(const char *note_str, size_t note_len, const pin_obj_t *pin);
 
 void microbit_music_init0(void) {
     ticker_register_low_pri_callback(microbit_music_tick);
@@ -136,11 +136,11 @@ void microbit_music_tick(void) {
     }
 }
 
-STATIC void wait_async_music_idle(void) {
+static void wait_async_music_idle(void) {
     // wait for the async music state to become idle
     while (music_data->async_state != ASYNC_MUSIC_STATE_IDLE) {
         // allow CTRL-C to stop the music
-        if (MP_STATE_VM(mp_pending_exception) != MP_OBJ_NULL) {
+        if (MP_STATE_THREAD(mp_pending_exception) != MP_OBJ_NULL) {
             music_data->async_state = ASYNC_MUSIC_STATE_IDLE;
             pwm_set_duty_cycle(music_data->async_pin->pin, 0); // TODO: remove pin setting.
             break;
@@ -148,7 +148,7 @@ STATIC void wait_async_music_idle(void) {
     }
 }
 
-STATIC uint32_t start_note(const char *note_str, size_t note_len, const pin_obj_t *pin) {
+static uint32_t start_note(const char *note_str, size_t note_len, const pin_obj_t *pin) {
     pwm_set_duty_cycle(pin->pin, 128); // TODO: remove pin setting.
 
     // [NOTE](#|b)(octave)(:length)
@@ -157,9 +157,9 @@ STATIC uint32_t start_note(const char *note_str, size_t note_len, const pin_obj_
     // array of us periods
 
     // these are the periods of note4 (the octave ascending from middle c) from A->B then C->G
-    STATIC uint16_t periods_us[] = {2273, 2025, 3822, 3405, 3034, 2863, 2551};
+    static uint16_t periods_us[] = {2273, 2025, 3822, 3405, 3034, 2863, 2551};
     // A#, -, C#, D#, -, F#, G#
-    STATIC uint16_t periods_sharps_us[] = {2145, 0, 3608, 3214, 0, 2703, 2408};
+    static uint16_t periods_sharps_us[] = {2145, 0, 3608, 3214, 0, 2703, 2408};
 
     // we'll represent the note as an integer (A=0, G=6)
     // TODO: validate the note
@@ -258,7 +258,7 @@ STATIC uint32_t start_note(const char *note_str, size_t note_len, const pin_obj_
     return gap_ms;
 }
 
-STATIC mp_obj_t microbit_music_reset(void) {
+static mp_obj_t microbit_music_reset(void) {
     music_data->bpm = DEFAULT_BPM;
     music_data->ticks = DEFAULT_TICKS;
     music_data->last_octave = DEFAULT_OCTAVE;
@@ -268,7 +268,7 @@ STATIC mp_obj_t microbit_music_reset(void) {
 }
 MP_DEFINE_CONST_FUN_OBJ_0(microbit_music_reset_obj, microbit_music_reset);
 
-STATIC mp_obj_t microbit_music_get_tempo(void) {
+static mp_obj_t microbit_music_get_tempo(void) {
     mp_obj_t tempo_tuple[2];
 
     tempo_tuple[0] = mp_obj_new_int(music_data->bpm);
@@ -278,13 +278,13 @@ STATIC mp_obj_t microbit_music_get_tempo(void) {
 }
 MP_DEFINE_CONST_FUN_OBJ_0(microbit_music_get_tempo_obj, microbit_music_get_tempo);
 
-STATIC mp_obj_t microbit_music_stop(mp_uint_t n_args, const mp_obj_t *args) {
+static mp_obj_t microbit_music_stop(mp_uint_t n_args, const mp_obj_t *args) {
     const pin_obj_t *pin;
     if (n_args == 0) {
 #ifdef MICROPY_HW_MUSIC_PIN
         pin = mp_hal_get_pin_obj(MP_OBJ_NEW_SMALL_INT(MICROPY_HW_MUSIC_PIN));
 #else
-        mp_raise_ValueError("pin parameter not given");
+        mp_raise_ValueError(MP_ERROR_TEXT("pin parameter not given"));
 #endif
     } else {
         pin = (pin_obj_t *)args[0];
@@ -301,7 +301,7 @@ STATIC mp_obj_t microbit_music_stop(mp_uint_t n_args, const mp_obj_t *args) {
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(microbit_music_stop_obj, 0, 1, microbit_music_stop);
 
-STATIC mp_obj_t microbit_music_play(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+static mp_obj_t microbit_music_play(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_music, MP_ARG_REQUIRED | MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL} },
         { MP_QSTR_pin,   MP_ARG_OBJ, {.u_obj = MP_OBJ_NULL} },
@@ -337,7 +337,7 @@ STATIC mp_obj_t microbit_music_play(mp_uint_t n_args, const mp_obj_t *pos_args, 
 #ifdef MICROPY_HW_MUSIC_PIN
         pin = mp_hal_get_pin_obj(MP_OBJ_NEW_SMALL_INT(MICROPY_HW_MUSIC_PIN));
 #else
-        mp_raise_ValueError("pin parameter not given");
+        mp_raise_ValueError(MP_ERROR_TEXT("pin parameter not given"));
 #endif
     } else {
         pin = (pin_obj_t *)args[1].u_obj;
@@ -370,7 +370,7 @@ STATIC mp_obj_t microbit_music_play(mp_uint_t n_args, const mp_obj_t *pos_args, 
 }
 MP_DEFINE_CONST_FUN_OBJ_KW(microbit_music_play_obj, 0, microbit_music_play);
 
-STATIC mp_obj_t microbit_music_pitch(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+static mp_obj_t microbit_music_pitch(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_frequency, MP_ARG_REQUIRED | MP_ARG_INT, {.u_int = 0} },
         { MP_QSTR_duration, MP_ARG_INT, {.u_int = -1} },
@@ -392,7 +392,7 @@ STATIC mp_obj_t microbit_music_pitch(mp_uint_t n_args, const mp_obj_t *pos_args,
 #ifdef MICROPY_HW_MUSIC_PIN
         pin = mp_hal_get_pin_obj(MP_OBJ_NEW_SMALL_INT(MICROPY_HW_MUSIC_PIN));
 #else
-        mp_raise_ValueError("pin parameter not given");
+        mp_raise_ValueError(MP_ERROR_TEXT("pin parameter not given"));
 #endif
     } else {
         pin = (pin_obj_t *)args[2].u_obj;
@@ -408,7 +408,7 @@ STATIC mp_obj_t microbit_music_pitch(mp_uint_t n_args, const mp_obj_t *pos_args,
 //TODO: pwm_release(pin->name);
     } else if (pwm_set_period_us(1000000/frequency)) {
         pwm_release(pin->pin); // TODO: remove pin setting.
-        mp_raise_ValueError("invalid pitch");
+        mp_raise_ValueError(MP_ERROR_TEXT("invalid pitch"));
     }
     if (duration >= 0) {
         // use async machinery to stop the pitch after the duration
@@ -433,7 +433,7 @@ STATIC mp_obj_t microbit_music_pitch(mp_uint_t n_args, const mp_obj_t *pos_args,
 }
 MP_DEFINE_CONST_FUN_OBJ_KW(microbit_music_pitch_obj, 0, microbit_music_pitch);
 
-STATIC mp_obj_t microbit_music_set_tempo(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+static mp_obj_t microbit_music_set_tempo(mp_uint_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_ticks, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0} },
         { MP_QSTR_bpm,   MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0} },
@@ -469,7 +469,7 @@ static mp_obj_t music_init(void) {
 }
 MP_DEFINE_CONST_FUN_OBJ_0(music___init___obj, music_init);
 
-STATIC const mp_rom_map_elem_t microbit_music_locals_dict_table[] = {
+static const mp_rom_map_elem_t microbit_music_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR___init__), MP_ROM_PTR(&music___init___obj) },
 
     { MP_ROM_QSTR(MP_QSTR_reset), MP_ROM_PTR(&microbit_music_reset_obj) },
@@ -502,11 +502,14 @@ STATIC const mp_rom_map_elem_t microbit_music_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_POWER_DOWN), MP_ROM_PTR(&microbit_music_tune_power_down_obj) },
 };
 
-STATIC MP_DEFINE_CONST_DICT(microbit_music_locals_dict, microbit_music_locals_dict_table);
+static MP_DEFINE_CONST_DICT(microbit_music_locals_dict, microbit_music_locals_dict_table);
 
 const mp_obj_module_t music_module = {
     .base = { &mp_type_module },
     .globals = (mp_obj_dict_t*)&microbit_music_locals_dict,
 };
+
+MP_REGISTER_MODULE(MP_QSTR_music, music_module);
+MP_REGISTER_ROOT_POINTER(struct _music_data_t *modmusic_music_data);
 
 #endif // MICROPY_PY_MUSIC

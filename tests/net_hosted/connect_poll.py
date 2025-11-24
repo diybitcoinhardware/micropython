@@ -1,9 +1,6 @@
 # test that socket.connect() has correct polling behaviour before, during and after
 
-try:
-    import usocket as socket, uselect as select
-except:
-    import socket, select
+import socket, select
 
 
 def test(peer_addr):
@@ -28,4 +25,4 @@ def test(peer_addr):
 
 
 if __name__ == "__main__":
-    test(socket.getaddrinfo('micropython.org', 80)[0][-1])
+    test(socket.getaddrinfo("micropython.org", 80)[0][-1])

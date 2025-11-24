@@ -31,7 +31,7 @@
 
 #include "modubluepy.h"
 
-STATIC const mp_rom_map_elem_t ubluepy_constants_ad_types_locals_dict_table[] = {
+static const mp_rom_map_elem_t ubluepy_constants_ad_types_locals_dict_table[] = {
     // GAP AD Types
     { MP_ROM_QSTR(MP_QSTR_AD_TYPE_FLAGS),                              MP_ROM_INT(0x01) },
     { MP_ROM_QSTR(MP_QSTR_AD_TYPE_16BIT_SERVICE_UUID_MORE_AVAILABLE),  MP_ROM_INT(0x02) },
@@ -67,15 +67,16 @@ STATIC const mp_rom_map_elem_t ubluepy_constants_ad_types_locals_dict_table[] = 
     { MP_ROM_QSTR(MP_QSTR_AD_TYPE_MANUFACTURER_SPECIFIC_DATA),         MP_ROM_INT(0xFF) },
 };
 
-STATIC MP_DEFINE_CONST_DICT(ubluepy_constants_ad_types_locals_dict, ubluepy_constants_ad_types_locals_dict_table);
+static MP_DEFINE_CONST_DICT(ubluepy_constants_ad_types_locals_dict, ubluepy_constants_ad_types_locals_dict_table);
 
-const mp_obj_type_t ubluepy_constants_ad_types_type = {
-    { &mp_type_type },
-    .name = MP_QSTR_ad_types,
-    .locals_dict = (mp_obj_dict_t*)&ubluepy_constants_ad_types_locals_dict
-};
+MP_DEFINE_CONST_OBJ_TYPE(
+    ubluepy_constants_ad_types_type,
+    MP_QSTR_ad_types,
+    MP_TYPE_FLAG_NONE,
+    locals_dict, &ubluepy_constants_ad_types_locals_dict
+    );
 
-STATIC const mp_rom_map_elem_t ubluepy_constants_locals_dict_table[] = {
+static const mp_rom_map_elem_t ubluepy_constants_locals_dict_table[] = {
     // GAP events
     { MP_ROM_QSTR(MP_QSTR_EVT_GAP_CONNECTED),       MP_ROM_INT(16) },
     { MP_ROM_QSTR(MP_QSTR_EVT_GAP_DISCONNECTED),    MP_ROM_INT(17) },
@@ -88,12 +89,13 @@ STATIC const mp_rom_map_elem_t ubluepy_constants_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_ad_types),                MP_ROM_PTR(&ubluepy_constants_ad_types_type) },
 };
 
-STATIC MP_DEFINE_CONST_DICT(ubluepy_constants_locals_dict, ubluepy_constants_locals_dict_table);
+static MP_DEFINE_CONST_DICT(ubluepy_constants_locals_dict, ubluepy_constants_locals_dict_table);
 
-const mp_obj_type_t ubluepy_constants_type = {
-    { &mp_type_type },
-    .name = MP_QSTR_constants,
-    .locals_dict = (mp_obj_dict_t*)&ubluepy_constants_locals_dict
-};
+MP_DEFINE_CONST_OBJ_TYPE(
+    ubluepy_constants_type,
+    MP_QSTR_constants,
+    MP_TYPE_FLAG_NONE,
+    locals_dict, &ubluepy_constants_locals_dict
+    );
 
 #endif // MICROPY_PY_UBLUEPY

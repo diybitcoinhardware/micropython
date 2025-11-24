@@ -1,12 +1,14 @@
 # Test for VfsLittle using a RAM device, testing error handling
 
 try:
-    import uos
-    uos.VfsLfs1
-    uos.VfsLfs2
+    import vfs
+
+    vfs.VfsLfs1
+    vfs.VfsLfs2
 except (ImportError, AttributeError):
     print("SKIP")
     raise SystemExit
+
 
 class RAMBlockDevice:
     ERASE_BLOCK_SIZE = 1024
@@ -25,93 +27,95 @@ class RAMBlockDevice:
             self.data[addr + i] = buf[i]
 
     def ioctl(self, op, arg):
-        if op == 4: # block count
+        if op == 4:  # block count
             return len(self.data) // self.ERASE_BLOCK_SIZE
-        if op == 5: # block size
+        if op == 5:  # block size
             return self.ERASE_BLOCK_SIZE
-        if op == 6: # erase block
+        if op == 6:  # erase block
             return 0
 
+
 def test(bdev, vfs_class):
-    print('test', vfs_class)
+    print("test", vfs_class)
 
     # mkfs with too-small block device
     try:
         vfs_class.mkfs(RAMBlockDevice(1))
     except OSError:
-        print('mkfs OSError')
+        print("mkfs OSError")
 
     # mount with invalid filesystem
     try:
         vfs_class(bdev)
     except OSError:
-        print('mount OSError')
+        print("mount OSError")
 
     # set up for following tests
     vfs_class.mkfs(bdev)
-    vfs = vfs_class(bdev)
-    with vfs.open('testfile', 'w') as f:
-        f.write('test')
-    vfs.mkdir('testdir')
+    fs = vfs_class(bdev)
+    with fs.open("testfile", "w") as f:
+        f.write("test")
+    fs.mkdir("testdir")
 
     # ilistdir
     try:
-        vfs.ilistdir('noexist')
+        fs.ilistdir("noexist")
     except OSError:
-        print('ilistdir OSError')
+        print("ilistdir OSError")
 
     # remove
     try:
-        vfs.remove('noexist')
+        fs.remove("noexist")
     except OSError:
-        print('remove OSError')
+        print("remove OSError")
 
     # rmdir
     try:
-        vfs.rmdir('noexist')
+        fs.rmdir("noexist")
     except OSError:
-        print('rmdir OSError')
+        print("rmdir OSError")
 
     # rename
     try:
-        vfs.rename('noexist', 'somethingelse')
+        fs.rename("noexist", "somethingelse")
     except OSError:
-        print('rename OSError')
+        print("rename OSError")
 
     # mkdir
     try:
-        vfs.mkdir('testdir')
+        fs.mkdir("testdir")
     except OSError:
-        print('mkdir OSError')
+        print("mkdir OSError")
 
     # chdir to nonexistent
     try:
-        vfs.chdir('noexist')
+        fs.chdir("noexist")
     except OSError:
-        print('chdir OSError')
-    print(vfs.getcwd()) # check still at root
+        print("chdir OSError")
+    print(fs.getcwd())  # check still at root
 
     # chdir to file
     try:
-        vfs.chdir('testfile')
+        fs.chdir("testfile")
     except OSError:
-        print('chdir OSError')
-    print(vfs.getcwd()) # check still at root
+        print("chdir OSError")
+    print(fs.getcwd())  # check still at root
 
     # stat
     try:
-        vfs.stat('noexist')
+        fs.stat("noexist")
     except OSError:
-        print('stat OSError')
+        print("stat OSError")
 
     # error during seek
-    with vfs.open('testfile', 'r') as f:
-        f.seek(1 << 30) # SEEK_SET
+    with fs.open("testfile", "r") as f:
+        f.seek(1 << 30)  # SEEK_SET
         try:
-            f.seek(1 << 30, 1) # SEEK_CUR
+            f.seek(1 << 30, 1)  # SEEK_CUR
         except OSError:
-            print('seek OSError')
+            print("seek OSError")
+
 
 bdev = RAMBlockDevice(30)
-test(bdev, uos.VfsLfs1)
-test(bdev, uos.VfsLfs2)
+test(bdev, vfs.VfsLfs1)
+test(bdev, vfs.VfsLfs2)

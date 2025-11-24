@@ -40,7 +40,7 @@ Block devices
 -------------
 
 A block device is an instance of a class that implements the
-:class:`uos.AbstractBlockDev` protocol.
+:class:`vfs.AbstractBlockDev` protocol.
 
 Built-in block devices
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -108,16 +108,16 @@ RAM using a ``bytearray``::
 
 It can be used as follows::
 
-    import os
+    import vfs
 
     bdev = RAMBlockDev(512, 50)
-    os.VfsFat.mkfs(bdev)
-    os.mount(bdev, '/ramdisk')
+    vfs.VfsFat.mkfs(bdev)
+    vfs.mount(bdev, '/ramdisk')
 
 An example of a block device that supports both the simple and extended
 interface (i.e. both signatures and behaviours of the
-:meth:`uos.AbstractBlockDev.readblocks` and
-:meth:`uos.AbstractBlockDev.writeblocks` methods) is::
+:meth:`vfs.AbstractBlockDev.readblocks` and
+:meth:`vfs.AbstractBlockDev.writeblocks` methods) is::
 
     class RAMBlockDev:
         def __init__(self, block_size, num_blocks):
@@ -148,13 +148,13 @@ interface (i.e. both signatures and behaviours of the
                 return 0
 
 As it supports the extended interface, it can be used with :class:`littlefs
-<uos.VfsLfs2>`::
+<vfs.VfsLfs2>`::
 
-    import os
+    import vfs
 
     bdev = RAMBlockDev(512, 50)
-    os.VfsLfs2.mkfs(bdev)
-    os.mount(bdev, '/ramdisk')
+    vfs.VfsLfs2.mkfs(bdev)
+    vfs.mount(bdev, '/ramdisk')
 
 Once mounted, the filesystem (regardless of its type) can be used as it
 normally would be used from Python code, for example::
@@ -166,8 +166,8 @@ normally would be used from Python code, for example::
 Filesystems
 -----------
 
-MicroPython ports can provide implementations of :class:`FAT <uos.VfsFat>`,
-:class:`littlefs v1 <uos.VfsLfs1>` and :class:`littlefs v2 <uos.VfsLfs2>`.
+MicroPython ports can provide implementations of :class:`FAT <vfs.VfsFat>`,
+:class:`littlefs v1 <vfs.VfsLfs1>` and :class:`littlefs v2 <vfs.VfsLfs2>`.
 
 The following table shows which filesystems are included in the firmware by
 default for given port/board combinations, however they can be optionally
@@ -178,7 +178,8 @@ Board                 FAT    littlefs v1  littlefs v2
 ====================  =====  ===========  ===========
 pyboard 1.0, 1.1, D   Yes    No           Yes
 Other STM32           Yes    No           No
-ESP8266               Yes    No           No
+ESP8266 (1M)          No     No           Yes
+ESP8266 (2M+)         Yes    No           Yes
 ESP32                 Yes    No           Yes
 ====================  =====  ===========  ===========
 
@@ -196,16 +197,16 @@ recommended to use littlefs instead.
 To format the entire flash using FAT::
 
     # ESP8266 and ESP32
-    import os
-    os.umount('/')
-    os.VfsFat.mkfs(bdev)
-    os.mount(bdev, '/')
+    import vfs
+    vfs.umount('/')
+    vfs.VfsFat.mkfs(bdev)
+    vfs.mount(bdev, '/')
 
     # STM32
-    import os, pyb
-    os.umount('/flash')
-    os.VfsFat.mkfs(pyb.Flash(start=0))
-    os.mount(pyb.Flash(start=0), '/flash')
+    import os, vfs, pyb
+    vfs.umount('/flash')
+    vfs.VfsFat.mkfs(pyb.Flash(start=0))
+    vfs.mount(pyb.Flash(start=0), '/flash')
     os.chdir('/flash')
 
 Littlefs
@@ -218,29 +219,41 @@ resistant to filesystem corruption.
           situations, for details see `littlefs issue 347`_  and
           `littlefs issue 295`_.
 
-Note: It can be still be accessed over USB MSC using the `littlefs FUSE
-driver`_. Note that you must use the ``-b=4096`` option to override the block
-size.
-
-.. _littlefs FUSE driver: https://github.com/ARMmbed/littlefs-fuse/tree/master/littlefs
-.. _Littlefs: https://github.com/ARMmbed/littlefs
-.. _littlefs issue 295: https://github.com/ARMmbed/littlefs/issues/295
-.. _littlefs issue 347: https://github.com/ARMmbed/littlefs/issues/347
-
 To format the entire flash using littlefs v2::
 
     # ESP8266 and ESP32
-    import os
-    os.umount('/')
-    os.VfsLfs2.mkfs(bdev)
-    os.mount(bdev, '/')
+    import vfs
+    vfs.umount('/')
+    vfs.VfsLfs2.mkfs(bdev)
+    vfs.mount(bdev, '/')
 
     # STM32
-    import os, pyb
-    os.umount('/flash')
-    os.VfsLfs2.mkfs(pyb.Flash(start=0))
-    os.mount(pyb.Flash(start=0), '/flash')
+    import os, vfs, pyb
+    vfs.umount('/flash')
+    vfs.VfsLfs2.mkfs(pyb.Flash(start=0))
+    vfs.mount(pyb.Flash(start=0), '/flash')
     os.chdir('/flash')
+
+A littlefs filesystem can be still be accessed on a PC over USB MSC using the
+`littlefs FUSE driver`_.  Note that you must specify both the ``--block_size``
+and ``--block_count`` options to override the defaults.  For example (after
+building the littlefs-fuse executable)::
+
+    $ ./lfs --block_size=4096 --block_count=512 -o allow_other /dev/sdb1 mnt
+
+This will allow the board's littlefs filesystem to be accessed at the ``mnt``
+directory.  To get the correct values of ``block_size`` and ``block_count`` use::
+
+    import pyb
+    f = pyb.Flash(start=0)
+    f.ioctl(1, 1)  # initialise flash in littlefs raw-block mode
+    block_count = f.ioctl(4, 0)
+    block_size = f.ioctl(5, 0)
+
+.. _littlefs FUSE driver: https://github.com/littlefs-project/littlefs-fuse
+.. _Littlefs: https://github.com/littlefs-project/littlefs
+.. _littlefs issue 295: https://github.com/littlefs-project/littlefs/issues/295
+.. _littlefs issue 347: https://github.com/littlefs-project/littlefs/issues/347
 
 Hybrid (STM32)
 ~~~~~~~~~~~~~~
@@ -251,14 +264,14 @@ block devices spanning a subset of the flash device.
 For example, to configure the first 256kiB as FAT (and available over USB MSC),
 and the remainder as littlefs::
 
-    import os, pyb
-    os.umount('/flash')
+    import os, vfs, pyb
+    vfs.umount('/flash')
     p1 = pyb.Flash(start=0, len=256*1024)
     p2 = pyb.Flash(start=256*1024)
-    os.VfsFat.mkfs(p1)
-    os.VfsLfs2.mkfs(p2)
-    os.mount(p1, '/flash')
-    os.mount(p2, '/data')
+    vfs.VfsFat.mkfs(p1)
+    vfs.VfsLfs2.mkfs(p2)
+    vfs.mount(p1, '/flash')
+    vfs.mount(p2, '/data')
     os.chdir('/flash')
 
 This might be useful to make your Python files, configuration and other
@@ -269,9 +282,9 @@ failure, etc.
 The partition at offset ``0`` will be mounted automatically (and the filesystem
 type automatically detected), but you can add::
 
-    import os, pyb
+    import vfs, pyb
     p2 = pyb.Flash(start=256*1024)
-    os.mount(p2, '/data')
+    vfs.mount(p2, '/data')
 
 to ``boot.py`` to mount the data partition.
 
@@ -284,7 +297,7 @@ define an arbitrary partition layout.
 At boot, the partition named "vfs" will be mounted at ``/`` by default, but any
 additional partitions can be mounted in your ``boot.py`` using::
 
-    import esp32, os
+    import esp32, vfs
     p = esp32.Partition.find(esp32.Partition.TYPE_DATA, label='foo')
-    os.mount(p, '/foo')
+    vfs.mount(p, '/foo')
 

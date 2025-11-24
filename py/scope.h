@@ -29,14 +29,15 @@
 #include "py/parse.h"
 #include "py/emitglue.h"
 
-enum {
+typedef enum {
     ID_INFO_KIND_UNDECIDED,
     ID_INFO_KIND_GLOBAL_IMPLICIT,
+    ID_INFO_KIND_GLOBAL_IMPLICIT_ASSIGNED,
     ID_INFO_KIND_GLOBAL_EXPLICIT,
     ID_INFO_KIND_LOCAL, // in a function f, written and only referenced by f
     ID_INFO_KIND_CELL,  // in a function f, read/written by children of f
     ID_INFO_KIND_FREE,  // in a function f, belongs to the parent of f
-};
+} id_info_kind_t;
 
 enum {
     ID_FLAG_IS_PARAM = 0x01,
@@ -49,12 +50,13 @@ typedef struct _id_info_t {
     uint8_t kind;
     uint8_t flags;
     // when it's an ID_INFO_KIND_LOCAL this is the unique number of the local
-    // whet it's an ID_INFO_KIND_CELL/FREE this is the unique number of the closed over variable
+    // when it's an ID_INFO_KIND_CELL/FREE this is the unique number of the closed over variable
     uint16_t local_num;
     qstr qst;
 } id_info_t;
 
 #define SCOPE_IS_FUNC_LIKE(s) ((s) >= SCOPE_LAMBDA)
+#define SCOPE_IS_COMP_LIKE(s) (SCOPE_LIST_COMP <= (s) && (s) <= SCOPE_GEN_EXPR)
 
 // scope is a "block" in Python parlance
 typedef enum {
@@ -74,7 +76,9 @@ typedef struct _scope_t {
     struct _scope_t *next;
     mp_parse_node_t pn;
     mp_raw_code_t *raw_code;
-    uint16_t source_file; // a qstr
+    #if MICROPY_DEBUG_PRINTERS
+    size_t raw_code_data_len; // for mp_bytecode_print
+    #endif
     uint16_t simple_name; // a qstr
     uint16_t scope_flags;  // see runtime0.h
     uint16_t emit_options; // see emitglue.h
@@ -89,9 +93,9 @@ typedef struct _scope_t {
     id_info_t *id_info;
 } scope_t;
 
-scope_t *scope_new(scope_kind_t kind, mp_parse_node_t pn, qstr source_file, mp_uint_t emit_options);
+scope_t *scope_new(scope_kind_t kind, mp_parse_node_t pn, mp_uint_t emit_options);
 void scope_free(scope_t *scope);
-id_info_t *scope_find_or_add_id(scope_t *scope, qstr qstr, scope_kind_t kind);
+id_info_t *scope_find_or_add_id(scope_t *scope, qstr qstr, id_info_kind_t kind);
 id_info_t *scope_find(scope_t *scope, qstr qstr);
 id_info_t *scope_find_global(scope_t *scope, qstr qstr);
 void scope_check_to_close_over(scope_t *scope, id_info_t *id);

@@ -29,7 +29,7 @@ This summarises the points detailed below and lists the principal recommendation
 * Allocate an emergency exception buffer (see below).
 
 
-MicroPython Issues
+MicroPython issues
 ------------------
 
 The emergency exception buffer
@@ -42,6 +42,11 @@ for the purpose. Debugging is simplified if the following code is included in an
 
     import micropython
     micropython.alloc_emergency_exception_buf(100)
+
+The emergency exception buffer can only hold one exception stack trace. This means that if a second exception is
+thrown during the handling of an exception while the heap is locked, that second exception's stack trace will
+replace the original one - even if the second exception is cleanly handled. This can lead to confusing exception
+messages if the buffer is later printed.
 
 Simplicity
 ~~~~~~~~~~
@@ -165,11 +170,17 @@ is partially updated. When the ISR tries to read the object, a crash results. Be
 on rare, random occasions they can be hard to diagnose. There are ways to circumvent this issue, described in
 :ref:`Critical Sections <Critical>` below.
 
-It is important to be clear about what constitutes the modification of an object. An alteration to a built-in type
-such as a dictionary is problematic. Altering the contents of an array or bytearray is not. This is because bytes
-or words are written as a single machine code instruction which is not interruptible: in the parlance of real time
-programming the write is atomic. A user defined object might instantiate an integer, array or bytearray. It is valid
-for both the main loop and the ISR to alter the contents of these.
+It is important to be clear about what constitutes the modification of an object. Altering the contents of an array
+or bytearray is safe. This is because bytes or words are written as a single machine code instruction which is not
+interruptible: in the parlance of real time programming the write is atomic. The same is true of updating a
+dictionary item because items are machine words, being integers or pointers to objects. A user defined object might
+instantiate an array or bytearray. It is valid for both the main loop and the ISR to alter the contents of these.
+
+The hazard arises when the structure of an object is altered, notably in the case of dictionaries. Adding or deleting
+keys can trigger a rehash. If a hard ISR runs while a rehash is in progress and attempts to access an item, a crash
+may occur. Internally globals are implemented as a dictionary. Consequently the main program should create all
+necessary globals before starting a process that generates hard interrupts. Application code should also avoid
+deleting globals.
 
 MicroPython supports integers of arbitrary precision. Values between 2**30 -1 and -2**30 will be stored in
 a single machine word. Larger values are stored as Python objects. Consequently changes to long integers cannot
@@ -198,7 +209,7 @@ issue a further interrupt. It then schedules a callback to process the data.
 
 Scheduled callbacks should comply with the principles of interrupt handler design outlined below. This is to
 avoid problems resulting from I/O activity and the modification of shared data which can arise in any code
-which pre-empts the main program loop.
+which preempts the main program loop.
 
 Execution time needs to be considered in relation to the frequency with which interrupts can occur. If an
 interrupt occurs while the previous callback is executing, a further instance of the callback will be queued
@@ -214,7 +225,34 @@ Exceptions
 If an ISR raises an exception it will not propagate to the main loop. The interrupt will be disabled unless the
 exception is handled by the ISR code.
 
-General Issues
+Interfacing to asyncio
+----------------------
+
+When an ISR runs it can preempt the `asyncio` scheduler. If the ISR performs a `asyncio`
+operation the scheduler's operation can be disrupted. This applies whether the interrupt is hard
+or soft and also applies if the ISR has passed execution to another function via
+`micropython.schedule`. In particular creating or cancelling tasks is invalid in an ISR context.
+The safe way to interact with `asyncio` is to implement a coroutine with synchronisation performed by
+`asyncio.ThreadSafeFlag`. The following fragment illustrates the creation of a task in response
+to an interrupt:
+
+.. code:: python
+
+    tsf = asyncio.ThreadSafeFlag()
+
+    def isr(_):  # Interrupt handler
+        tsf.set()
+
+    async def foo():
+        while True:
+            await tsf.wait()
+            asyncio.create_task(bar())
+
+In this example there will be a variable amount of latency between the execution of the ISR and the execution
+of ``foo()``. This is inherent to cooperative scheduling. The maximum latency is application
+and platform dependent but may typically be measured in tens of ms.
+
+General issues
 --------------
 
 This is merely a brief introduction to the subject of real time programming. Beginners should note
@@ -225,7 +263,7 @@ with an appreciation of the following issues.
 
 .. _ISR:
 
-Interrupt Handler Design
+Interrupt handler design
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 As mentioned above, ISR's should be designed to be as simple as possible. They should always return in a short,
@@ -276,7 +314,7 @@ advanced topic beyond the scope of this tutorial.
 
 .. _Critical:
 
-Critical Sections
+Critical sections
 ~~~~~~~~~~~~~~~~~
 
 An example of a critical section of code is one which accesses more than one variable which can be affected by an ISR. If
@@ -334,8 +372,8 @@ A critical section can comprise a single line of code and a single variable. Con
 
 This example illustrates a subtle source of bugs. The line ``count += 1`` in the main loop carries a specific race
 condition hazard known as a read-modify-write. This is a classic cause of bugs in real time systems. In the main loop
-MicroPython reads the value of ``t.counter``, adds 1 to it, and writes it back. On rare occasions the  interrupt occurs
-after the read and before the write. The interrupt modifies ``t.counter`` but its change is overwritten by the main
+MicroPython reads the value of ``count``, adds 1 to it, and writes it back. On rare occasions the  interrupt occurs
+after the read and before the write. The interrupt modifies ``count`` but its change is overwritten by the main
 loop when the ISR returns. In a real system this could lead to rare, unpredictable failures.
 
 As mentioned above, care should be taken if an instance of a Python built in type is modified in the main code and

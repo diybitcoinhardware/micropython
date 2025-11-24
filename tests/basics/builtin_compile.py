@@ -1,11 +1,10 @@
 # test compile builtin
 
-def have_compile():
-    try:
-        compile
-        return True
-    except NameError:
-        return False
+try:
+    compile
+except NameError:
+    print("SKIP")
+    raise SystemExit
 
 def test():
     global x
@@ -26,8 +25,12 @@ def test():
     exec(c, {}, {"x":3})
 
     # single/eval mode
-    exec(compile('print(1 + 1)', 'file', 'single'))
-    print(eval(compile('1 + 1', 'file', 'eval')))
+    exec(compile("if 1: 10 + 1\n", "file", "single"))
+    exec(compile("print(10 + 2)", "file", "single"))
+    print(eval(compile("10 + 3", "file", "eval")))
+
+    # test accessing a function's globals from within a compile
+    exec(compile("def func():pass\nprint('x', func.__globals__['x'])", "file", "exec"))
 
     # bad mode
     try:
@@ -42,8 +45,7 @@ def test():
         print("NameError")
     print(x) # check 'x' still exists as a global
 
-if have_compile():
-    test()
-else:
-    print("SKIP")
-    raise SystemExit
+    # hashing a compiled function object
+    print(type(hash(compile("", "", "exec"))))
+
+test()

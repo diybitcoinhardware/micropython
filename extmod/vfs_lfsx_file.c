@@ -3,7 +3,7 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2019 Damien P. George
+ * Copyright (c) 2019-2020 Damien P. George
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,9 @@
  * THE SOFTWARE.
  */
 
+// This file should be compiled when included from vfs_lfs.c.
+#if defined(LFS_BUILD_VERSION)
+
 #include <stdio.h>
 #include <string.h>
 
@@ -32,13 +35,13 @@
 #include "py/mperrno.h"
 #include "extmod/vfs.h"
 
-STATIC void MP_VFS_LFSx(check_open)(MP_OBJ_VFS_LFSx_FILE *self) {
+static void MP_VFS_LFSx(check_open)(MP_OBJ_VFS_LFSx_FILE * self) {
     if (self->vfs == NULL) {
         mp_raise_ValueError(NULL);
     }
 }
 
-STATIC void MP_VFS_LFSx(file_print)(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
+static void MP_VFS_LFSx(file_print)(const mp_print_t * print, mp_obj_t self_in, mp_print_kind_t kind) {
     (void)self_in;
     (void)kind;
     mp_printf(print, "<io.%s>", mp_obj_get_type_str(self_in));
@@ -68,11 +71,9 @@ mp_obj_t MP_VFS_LFSx(file_open)(mp_obj_t self_in, mp_obj_t path_in, mp_obj_t mod
             case '+':
                 flags |= LFSx_MACRO(_O_RDWR);
                 break;
-            #if MICROPY_PY_IO_FILEIO
             case 'b':
                 type = &MP_TYPE_VFS_LFSx_(_fileio);
                 break;
-            #endif
             case 't':
                 type = &MP_TYPE_VFS_LFSx_(_textio);
                 break;
@@ -89,17 +90,27 @@ mp_obj_t MP_VFS_LFSx(file_open)(mp_obj_t self_in, mp_obj_t path_in, mp_obj_t mod
     }
 
     #if LFS_BUILD_VERSION == 1
-    MP_OBJ_VFS_LFSx_FILE *o = m_new_obj_var_with_finaliser(MP_OBJ_VFS_LFSx_FILE, uint8_t, self->lfs.cfg->prog_size);
+    MP_OBJ_VFS_LFSx_FILE *o = mp_obj_malloc_var_with_finaliser(MP_OBJ_VFS_LFSx_FILE, uint8_t, self->lfs.cfg->prog_size, type);
     #else
-    MP_OBJ_VFS_LFSx_FILE *o = m_new_obj_var_with_finaliser(MP_OBJ_VFS_LFSx_FILE, uint8_t, self->lfs.cfg->cache_size);
+    MP_OBJ_VFS_LFSx_FILE *o = mp_obj_malloc_var_with_finaliser(MP_OBJ_VFS_LFSx_FILE, uint8_t, self->lfs.cfg->cache_size, type);
     #endif
-    o->base.type = type;
     o->vfs = self;
     #if !MICROPY_GC_CONSERVATIVE_CLEAR
     memset(&o->file, 0, sizeof(o->file));
     memset(&o->cfg, 0, sizeof(o->cfg));
     #endif
     o->cfg.buffer = &o->file_buffer[0];
+
+    #if LFS_BUILD_VERSION == 2
+    if (self->enable_mtime) {
+        lfs_get_mtime(&o->mtime[0]);
+        o->attrs[0].type = LFS_ATTR_MTIME;
+        o->attrs[0].buffer = &o->mtime[0];
+        o->attrs[0].size = sizeof(o->mtime);
+        o->cfg.attrs = &o->attrs[0];
+        o->cfg.attr_count = MP_ARRAY_SIZE(o->attrs);
+    }
+    #endif
 
     const char *path = MP_VFS_LFSx(make_path)(self, path_in);
     int ret = LFSx_API(file_opencfg)(&self->lfs, &o->file, path, flags, &o->cfg);
@@ -111,13 +122,7 @@ mp_obj_t MP_VFS_LFSx(file_open)(mp_obj_t self_in, mp_obj_t path_in, mp_obj_t mod
     return MP_OBJ_FROM_PTR(o);
 }
 
-STATIC mp_obj_t MP_VFS_LFSx(file___exit__)(size_t n_args, const mp_obj_t *args) {
-    (void)n_args;
-    return mp_stream_close(args[0]);
-}
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(MP_VFS_LFSx(file___exit___obj), 4, 4, MP_VFS_LFSx(file___exit__));
-
-STATIC mp_uint_t MP_VFS_LFSx(file_read)(mp_obj_t self_in, void *buf, mp_uint_t size, int *errcode) {
+static mp_uint_t MP_VFS_LFSx(file_read)(mp_obj_t self_in, void *buf, mp_uint_t size, int *errcode) {
     MP_OBJ_VFS_LFSx_FILE *self = MP_OBJ_TO_PTR(self_in);
     MP_VFS_LFSx(check_open)(self);
     LFSx_API(ssize_t) sz = LFSx_API(file_read)(&self->vfs->lfs, &self->file, buf, size);
@@ -128,9 +133,14 @@ STATIC mp_uint_t MP_VFS_LFSx(file_read)(mp_obj_t self_in, void *buf, mp_uint_t s
     return sz;
 }
 
-STATIC mp_uint_t MP_VFS_LFSx(file_write)(mp_obj_t self_in, const void *buf, mp_uint_t size, int *errcode) {
+static mp_uint_t MP_VFS_LFSx(file_write)(mp_obj_t self_in, const void *buf, mp_uint_t size, int *errcode) {
     MP_OBJ_VFS_LFSx_FILE *self = MP_OBJ_TO_PTR(self_in);
     MP_VFS_LFSx(check_open)(self);
+    #if LFS_BUILD_VERSION == 2
+    if (self->vfs->enable_mtime) {
+        lfs_get_mtime(&self->mtime[0]);
+    }
+    #endif
     LFSx_API(ssize_t) sz = LFSx_API(file_write)(&self->vfs->lfs, &self->file, buf, size);
     if (sz < 0) {
         *errcode = -sz;
@@ -139,7 +149,7 @@ STATIC mp_uint_t MP_VFS_LFSx(file_write)(mp_obj_t self_in, const void *buf, mp_u
     return sz;
 }
 
-STATIC mp_uint_t MP_VFS_LFSx(file_ioctl)(mp_obj_t self_in, mp_uint_t request, uintptr_t arg, int *errcode) {
+static mp_uint_t MP_VFS_LFSx(file_ioctl)(mp_obj_t self_in, mp_uint_t request, uintptr_t arg, int *errcode) {
     MP_OBJ_VFS_LFSx_FILE *self = MP_OBJ_TO_PTR(self_in);
 
     if (request != MP_STREAM_CLOSE) {
@@ -147,7 +157,7 @@ STATIC mp_uint_t MP_VFS_LFSx(file_ioctl)(mp_obj_t self_in, mp_uint_t request, ui
     }
 
     if (request == MP_STREAM_SEEK) {
-        struct mp_stream_seek_t *s = (struct mp_stream_seek_t*)(uintptr_t)arg;
+        struct mp_stream_seek_t *s = (struct mp_stream_seek_t *)(uintptr_t)arg;
         int res = LFSx_API(file_seek)(&self->vfs->lfs, &self->file, s->offset, s->whence);
         if (res < 0) {
             *errcode = -res;
@@ -184,7 +194,7 @@ STATIC mp_uint_t MP_VFS_LFSx(file_ioctl)(mp_obj_t self_in, mp_uint_t request, ui
     }
 }
 
-STATIC const mp_rom_map_elem_t MP_VFS_LFSx(file_locals_dict_table)[] = {
+static const mp_rom_map_elem_t MP_VFS_LFSx(file_locals_dict_table)[] = {
     { MP_ROM_QSTR(MP_QSTR_read), MP_ROM_PTR(&mp_stream_read_obj) },
     { MP_ROM_QSTR(MP_QSTR_readinto), MP_ROM_PTR(&mp_stream_readinto_obj) },
     { MP_ROM_QSTR(MP_QSTR_readline), MP_ROM_PTR(&mp_stream_unbuffered_readline_obj) },
@@ -196,41 +206,39 @@ STATIC const mp_rom_map_elem_t MP_VFS_LFSx(file_locals_dict_table)[] = {
     { MP_ROM_QSTR(MP_QSTR_tell), MP_ROM_PTR(&mp_stream_tell_obj) },
     { MP_ROM_QSTR(MP_QSTR___del__), MP_ROM_PTR(&mp_stream_close_obj) },
     { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&mp_identity_obj) },
-    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&MP_VFS_LFSx(file___exit___obj)) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&mp_stream___exit___obj) },
 };
-STATIC MP_DEFINE_CONST_DICT(MP_VFS_LFSx(file_locals_dict), MP_VFS_LFSx(file_locals_dict_table));
+static MP_DEFINE_CONST_DICT(MP_VFS_LFSx(file_locals_dict), MP_VFS_LFSx(file_locals_dict_table));
 
-#if MICROPY_PY_IO_FILEIO
-STATIC const mp_stream_p_t MP_VFS_LFSx(fileio_stream_p) = {
+static const mp_stream_p_t MP_VFS_LFSx(fileio_stream_p) = {
     .read = MP_VFS_LFSx(file_read),
     .write = MP_VFS_LFSx(file_write),
     .ioctl = MP_VFS_LFSx(file_ioctl),
 };
 
-const mp_obj_type_t MP_TYPE_VFS_LFSx_(_fileio) = {
-    { &mp_type_type },
-    .name = MP_QSTR_FileIO,
-    .print = MP_VFS_LFSx(file_print),
-    .getiter = mp_identity_getiter,
-    .iternext = mp_stream_unbuffered_iter,
-    .protocol = &MP_VFS_LFSx(fileio_stream_p),
-    .locals_dict = (mp_obj_dict_t*)&MP_VFS_LFSx(file_locals_dict),
-};
-#endif
+MP_DEFINE_CONST_OBJ_TYPE(
+    MP_TYPE_VFS_LFSx_(_fileio),
+    MP_QSTR_FileIO,
+    MP_TYPE_FLAG_ITER_IS_STREAM,
+    print, MP_VFS_LFSx(file_print),
+    protocol, &MP_VFS_LFSx(fileio_stream_p),
+    locals_dict, &MP_VFS_LFSx(file_locals_dict)
+    );
 
-STATIC const mp_stream_p_t MP_VFS_LFSx(textio_stream_p) = {
+static const mp_stream_p_t MP_VFS_LFSx(textio_stream_p) = {
     .read = MP_VFS_LFSx(file_read),
     .write = MP_VFS_LFSx(file_write),
     .ioctl = MP_VFS_LFSx(file_ioctl),
     .is_text = true,
 };
 
-const mp_obj_type_t MP_TYPE_VFS_LFSx_(_textio) = {
-    { &mp_type_type },
-    .name = MP_QSTR_TextIOWrapper,
-    .print = MP_VFS_LFSx(file_print),
-    .getiter = mp_identity_getiter,
-    .iternext = mp_stream_unbuffered_iter,
-    .protocol = &MP_VFS_LFSx(textio_stream_p),
-    .locals_dict = (mp_obj_dict_t*)&MP_VFS_LFSx(file_locals_dict),
-};
+MP_DEFINE_CONST_OBJ_TYPE(
+    MP_TYPE_VFS_LFSx_(_textio),
+    MP_QSTR_TextIOWrapper,
+    MP_TYPE_FLAG_ITER_IS_STREAM,
+    print, MP_VFS_LFSx(file_print),
+    protocol, &MP_VFS_LFSx(textio_stream_p),
+    locals_dict, &MP_VFS_LFSx(file_locals_dict)
+    );
+
+#endif // defined(LFS_BUILD_VERSION)

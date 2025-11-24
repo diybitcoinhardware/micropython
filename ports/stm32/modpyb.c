@@ -29,8 +29,7 @@
 
 #include "py/runtime.h"
 #include "py/mphal.h"
-#include "lib/utils/pyexec.h"
-#include "drivers/dht/dht.h"
+#include "shared/runtime/pyexec.h"
 #include "stm32_it.h"
 #include "irq.h"
 #include "led.h"
@@ -42,7 +41,7 @@
 #include "i2c.h"
 #include "spi.h"
 #include "uart.h"
-#include "can.h"
+#include "pyb_can.h"
 #include "adc.h"
 #include "storage.h"
 #include "sdcard.h"
@@ -53,44 +52,52 @@
 #include "usb.h"
 #include "portmodules.h"
 #include "modmachine.h"
+#include "extmod/modmachine.h"
+#include "extmod/modnetwork.h"
 #include "extmod/vfs.h"
-#include "extmod/utime_mphal.h"
+#include "extmod/modtime.h"
 
-char pyb_country_code[2];
+#if MICROPY_PY_PYB
 
-STATIC mp_obj_t pyb_fault_debug(mp_obj_t value) {
+static mp_obj_t pyb_fault_debug(mp_obj_t value) {
     pyb_hard_fault_debug = mp_obj_is_true(value);
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_fault_debug_obj, pyb_fault_debug);
+static MP_DEFINE_CONST_FUN_OBJ_1(pyb_fault_debug_obj, pyb_fault_debug);
+
+static mp_obj_t pyb_idle(void) {
+    __WFI();
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(pyb_idle_obj, pyb_idle);
 
 #if MICROPY_PY_PYB_LEGACY
 
 // Returns the number of milliseconds which have elapsed since `start`.
 // This function takes care of counter wrap and always returns a positive number.
-STATIC mp_obj_t pyb_elapsed_millis(mp_obj_t start) {
+static mp_obj_t pyb_elapsed_millis(mp_obj_t start) {
     uint32_t startMillis = mp_obj_get_int(start);
     uint32_t currMillis = mp_hal_ticks_ms();
     return MP_OBJ_NEW_SMALL_INT((currMillis - startMillis) & 0x3fffffff);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_elapsed_millis_obj, pyb_elapsed_millis);
+static MP_DEFINE_CONST_FUN_OBJ_1(pyb_elapsed_millis_obj, pyb_elapsed_millis);
 
 // Returns the number of microseconds which have elapsed since `start`.
 // This function takes care of counter wrap and always returns a positive number.
-STATIC mp_obj_t pyb_elapsed_micros(mp_obj_t start) {
+static mp_obj_t pyb_elapsed_micros(mp_obj_t start) {
     uint32_t startMicros = mp_obj_get_int(start);
     uint32_t currMicros = mp_hal_ticks_us();
     return MP_OBJ_NEW_SMALL_INT((currMicros - startMicros) & 0x3fffffff);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(pyb_elapsed_micros_obj, pyb_elapsed_micros);
+static MP_DEFINE_CONST_FUN_OBJ_1(pyb_elapsed_micros_obj, pyb_elapsed_micros);
 
 #endif
 
 MP_DECLARE_CONST_FUN_OBJ_KW(pyb_main_obj); // defined in main.c
 
 // Get or set the UART object that the REPL is repeated on.
-// This is a legacy function, use of uos.dupterm is preferred.
-STATIC mp_obj_t pyb_repl_uart(size_t n_args, const mp_obj_t *args) {
+// This is a legacy function, use of os.dupterm is preferred.
+static mp_obj_t pyb_repl_uart(size_t n_args, const mp_obj_t *args) {
     if (n_args == 0) {
         if (MP_STATE_PORT(pyb_stdio_uart) == NULL) {
             return mp_const_none;
@@ -103,34 +110,31 @@ STATIC mp_obj_t pyb_repl_uart(size_t n_args, const mp_obj_t *args) {
                 uart_attach_to_repl(MP_STATE_PORT(pyb_stdio_uart), false);
                 MP_STATE_PORT(pyb_stdio_uart) = NULL;
             }
-        } else if (mp_obj_get_type(args[0]) == &pyb_uart_type) {
+        } else if (mp_obj_get_type(args[0]) == &machine_uart_type) {
             MP_STATE_PORT(pyb_stdio_uart) = MP_OBJ_TO_PTR(args[0]);
             uart_attach_to_repl(MP_STATE_PORT(pyb_stdio_uart), true);
         } else {
-            mp_raise_ValueError("need a UART object");
+            mp_raise_ValueError(MP_ERROR_TEXT("need a UART object"));
         }
         return mp_const_none;
     }
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(pyb_repl_uart_obj, 0, 1, pyb_repl_uart);
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(pyb_repl_uart_obj, 0, 1, pyb_repl_uart);
 
-STATIC mp_obj_t pyb_country(size_t n_args, const mp_obj_t *args) {
-    if (n_args == 0) {
-        return mp_obj_new_str(pyb_country_code, 2);
-    } else {
-        size_t len;
-        const char *str = mp_obj_str_get_data(args[0], &len);
-        if (len != 2) {
-            mp_raise_ValueError(NULL);
-        }
-        pyb_country_code[0] = str[0];
-        pyb_country_code[1] = str[1];
-        return mp_const_none;
-    }
+#if MICROPY_PY_NETWORK
+MP_DECLARE_CONST_FUN_OBJ_VAR_BETWEEN(mod_network_country_obj);
+#else
+// Provide a no-op version of pyb.country for backwards compatibility on
+// boards that don't support networking.
+static mp_obj_t pyb_country(size_t n_args, const mp_obj_t *args) {
+    (void)n_args;
+    (void)args;
+    return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(pyb_country_obj, 0, 1, pyb_country);
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(mod_network_country_obj, 0, 1, pyb_country);
+#endif
 
-STATIC const mp_rom_map_elem_t pyb_module_globals_table[] = {
+static const mp_rom_map_elem_t pyb_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_pyb) },
 
     { MP_ROM_QSTR(MP_QSTR_fault_debug), MP_ROM_PTR(&pyb_fault_debug_obj) },
@@ -146,9 +150,9 @@ STATIC const mp_rom_map_elem_t pyb_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_repl_info), MP_ROM_PTR(&pyb_set_repl_info_obj) },
     #endif
 
-    { MP_ROM_QSTR(MP_QSTR_wfi), MP_ROM_PTR(&pyb_wfi_obj) },
-    { MP_ROM_QSTR(MP_QSTR_disable_irq), MP_ROM_PTR(&pyb_disable_irq_obj) },
-    { MP_ROM_QSTR(MP_QSTR_enable_irq), MP_ROM_PTR(&pyb_enable_irq_obj) },
+    { MP_ROM_QSTR(MP_QSTR_wfi), MP_ROM_PTR(&pyb_idle_obj) },
+    { MP_ROM_QSTR(MP_QSTR_disable_irq), MP_ROM_PTR(&machine_disable_irq_obj) },
+    { MP_ROM_QSTR(MP_QSTR_enable_irq), MP_ROM_PTR(&machine_enable_irq_obj) },
     #if IRQ_ENABLE_STATS
     { MP_ROM_QSTR(MP_QSTR_irq_stats), MP_ROM_PTR(&pyb_irq_stats_obj) },
     #endif
@@ -159,7 +163,9 @@ STATIC const mp_rom_map_elem_t pyb_module_globals_table[] = {
     #endif
     { MP_ROM_QSTR(MP_QSTR_main), MP_ROM_PTR(&pyb_main_obj) },
     { MP_ROM_QSTR(MP_QSTR_repl_uart), MP_ROM_PTR(&pyb_repl_uart_obj) },
-    { MP_ROM_QSTR(MP_QSTR_country), MP_ROM_PTR(&pyb_country_obj) },
+
+    // Deprecated (use network.country instead).
+    { MP_ROM_QSTR(MP_QSTR_country), MP_ROM_PTR(&mod_network_country_obj) },
 
     #if MICROPY_HW_ENABLE_USB
     { MP_ROM_QSTR(MP_QSTR_usb_mode), MP_ROM_PTR(&pyb_usb_mode_obj) },
@@ -179,89 +185,90 @@ STATIC const mp_rom_map_elem_t pyb_module_globals_table[] = {
     #endif
 
     #if MICROPY_PY_PYB_LEGACY
-    { MP_ROM_QSTR(MP_QSTR_millis), MP_ROM_PTR(&mp_utime_ticks_ms_obj) },
+    { MP_ROM_QSTR(MP_QSTR_millis), MP_ROM_PTR(&mp_time_ticks_ms_obj) },
     { MP_ROM_QSTR(MP_QSTR_elapsed_millis), MP_ROM_PTR(&pyb_elapsed_millis_obj) },
-    { MP_ROM_QSTR(MP_QSTR_micros), MP_ROM_PTR(&mp_utime_ticks_us_obj) },
+    { MP_ROM_QSTR(MP_QSTR_micros), MP_ROM_PTR(&mp_time_ticks_us_obj) },
     { MP_ROM_QSTR(MP_QSTR_elapsed_micros), MP_ROM_PTR(&pyb_elapsed_micros_obj) },
-    { MP_ROM_QSTR(MP_QSTR_delay), MP_ROM_PTR(&mp_utime_sleep_ms_obj) },
-    { MP_ROM_QSTR(MP_QSTR_udelay), MP_ROM_PTR(&mp_utime_sleep_us_obj) },
-    { MP_ROM_QSTR(MP_QSTR_sync), MP_ROM_PTR(&mod_os_sync_obj) },
+    { MP_ROM_QSTR(MP_QSTR_delay), MP_ROM_PTR(&mp_time_sleep_ms_obj) },
+    { MP_ROM_QSTR(MP_QSTR_udelay), MP_ROM_PTR(&mp_time_sleep_us_obj) },
+    { MP_ROM_QSTR(MP_QSTR_sync), MP_ROM_PTR(&mp_os_sync_obj) },
     { MP_ROM_QSTR(MP_QSTR_mount), MP_ROM_PTR(&mp_vfs_mount_obj) },
     #endif
 
-    // This function is not intended to be public and may be moved elsewhere
-    { MP_ROM_QSTR(MP_QSTR_dht_readinto), MP_ROM_PTR(&dht_readinto_obj) },
-
     { MP_ROM_QSTR(MP_QSTR_Timer), MP_ROM_PTR(&pyb_timer_type) },
 
-#if MICROPY_HW_ENABLE_RNG
+    #if MICROPY_HW_ENABLE_RNG
     { MP_ROM_QSTR(MP_QSTR_rng), MP_ROM_PTR(&pyb_rng_get_obj) },
-#endif
+    #endif
 
-#if MICROPY_HW_ENABLE_RTC
+    #if MICROPY_HW_ENABLE_RTC
     { MP_ROM_QSTR(MP_QSTR_RTC), MP_ROM_PTR(&pyb_rtc_type) },
-#endif
+    #endif
 
     { MP_ROM_QSTR(MP_QSTR_Pin), MP_ROM_PTR(&pin_type) },
     { MP_ROM_QSTR(MP_QSTR_ExtInt), MP_ROM_PTR(&extint_type) },
 
-#if MICROPY_HW_ENABLE_SERVO
+    #if MICROPY_HW_ENABLE_SERVO
     { MP_ROM_QSTR(MP_QSTR_pwm), MP_ROM_PTR(&pyb_pwm_set_obj) },
     { MP_ROM_QSTR(MP_QSTR_servo), MP_ROM_PTR(&pyb_servo_set_obj) },
     { MP_ROM_QSTR(MP_QSTR_Servo), MP_ROM_PTR(&pyb_servo_type) },
-#endif
+    #endif
 
-#if MICROPY_HW_HAS_SWITCH
+    #if MICROPY_HW_HAS_SWITCH
     { MP_ROM_QSTR(MP_QSTR_Switch), MP_ROM_PTR(&pyb_switch_type) },
-#endif
+    #endif
 
-#if MICROPY_HW_HAS_FLASH
+    #if MICROPY_HW_HAS_FLASH
     { MP_ROM_QSTR(MP_QSTR_Flash), MP_ROM_PTR(&pyb_flash_type) },
-#endif
+    #endif
 
-#if MICROPY_HW_ENABLE_SDCARD
+    #if MICROPY_HW_ENABLE_SDCARD
     #if MICROPY_PY_PYB_LEGACY
     { MP_ROM_QSTR(MP_QSTR_SD), MP_ROM_PTR(&pyb_sdcard_obj) }, // now obsolete
     #endif
     { MP_ROM_QSTR(MP_QSTR_SDCard), MP_ROM_PTR(&pyb_sdcard_type) },
-#endif
+    #endif
     #if MICROPY_HW_ENABLE_MMCARD
     { MP_ROM_QSTR(MP_QSTR_MMCard), MP_ROM_PTR(&pyb_mmcard_type) },
     #endif
 
-#if defined(MICROPY_HW_LED1)
+    #if defined(MICROPY_HW_LED1)
     { MP_ROM_QSTR(MP_QSTR_LED), MP_ROM_PTR(&pyb_led_type) },
-#endif
+    #endif
     #if MICROPY_PY_PYB_LEGACY && MICROPY_HW_ENABLE_HW_I2C
     { MP_ROM_QSTR(MP_QSTR_I2C), MP_ROM_PTR(&pyb_i2c_type) },
     #endif
     { MP_ROM_QSTR(MP_QSTR_SPI), MP_ROM_PTR(&pyb_spi_type) },
-    { MP_ROM_QSTR(MP_QSTR_UART), MP_ROM_PTR(&pyb_uart_type) },
-#if MICROPY_HW_ENABLE_CAN
+    { MP_ROM_QSTR(MP_QSTR_UART), MP_ROM_PTR(&machine_uart_type) },
+    #if MICROPY_HW_ENABLE_CAN
     { MP_ROM_QSTR(MP_QSTR_CAN), MP_ROM_PTR(&pyb_can_type) },
-#endif
+    #endif
 
     #if MICROPY_HW_ENABLE_ADC
     { MP_ROM_QSTR(MP_QSTR_ADC), MP_ROM_PTR(&pyb_adc_type) },
     { MP_ROM_QSTR(MP_QSTR_ADCAll), MP_ROM_PTR(&pyb_adc_all_type) },
     #endif
 
-#if MICROPY_HW_ENABLE_DAC
+    #if MICROPY_HW_ENABLE_DAC
     { MP_ROM_QSTR(MP_QSTR_DAC), MP_ROM_PTR(&pyb_dac_type) },
-#endif
+    #endif
 
-#if MICROPY_HW_HAS_MMA7660 || MICROPY_HW_HAS_KXTJ3
+    #if MICROPY_HW_HAS_MMA7660 || MICROPY_HW_HAS_KXTJ3
     { MP_ROM_QSTR(MP_QSTR_Accel), MP_ROM_PTR(&pyb_accel_type) },
-#endif
+    #endif
 
-#if MICROPY_HW_HAS_LCD
+    #if MICROPY_HW_HAS_LCD
     { MP_ROM_QSTR(MP_QSTR_LCD), MP_ROM_PTR(&pyb_lcd_type) },
-#endif
+    #endif
 };
 
-STATIC MP_DEFINE_CONST_DICT(pyb_module_globals, pyb_module_globals_table);
+static MP_DEFINE_CONST_DICT(pyb_module_globals, pyb_module_globals_table);
 
 const mp_obj_module_t pyb_module = {
     .base = { &mp_type_module },
-    .globals = (mp_obj_dict_t*)&pyb_module_globals,
+    .globals = (mp_obj_dict_t *)&pyb_module_globals,
 };
+
+MP_REGISTER_MODULE(MP_QSTR_pyb, pyb_module);
+
+#endif // MICROPY_PY_PYB

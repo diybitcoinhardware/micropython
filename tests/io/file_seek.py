@@ -1,4 +1,4 @@
-f = open("io/data/file1", "rb")
+f = open("data/file1", "rb")
 print(f.seek(6))
 print(f.read(5))
 print(f.tell())
@@ -18,17 +18,17 @@ print(f.tell())
 f.close()
 
 # test text mode
-f = open("io/data/file1", "rt")
+f = open("data/file1", "rt")
 print(f.seek(6))
 print(f.read(5))
 print(f.tell())
 f.close()
 
 # seek closed file
-f = open('io/data/file1', 'r')
+f = open("data/file1", "r")
 f.close()
 try:
     f.seek(1)
 except (OSError, ValueError):
     # CPy raises ValueError, uPy raises OSError
-    print('OSError or ValueError')
+    print("OSError or ValueError")

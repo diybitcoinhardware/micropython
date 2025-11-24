@@ -26,13 +26,14 @@
 
 #include <stdio.h>
 
+#include "py/builtin.h"
 #include "py/compile.h"
 #include "py/runtime.h"
 #include "py/repl.h"
 #include "py/gc.h"
 #include "py/mperrno.h"
 #include "py/stackctrl.h"
-#include "lib/utils/pyexec.h"
+#include "shared/runtime/pyexec.h"
 
 void __stack_chk_fail(void);
 void __stack_chk_fail(void) {
@@ -50,7 +51,8 @@ void __stack_chk_fail(void) {
 void __assert_fail(const char *__assertion, const char *__file,
     unsigned int __line, const char *__function) {
     printf("Assert at %s:%d:%s() \"%s\" failed\n", __file, __line, __function, __assertion);
-    for (;;) ;
+    for (;;) {;
+    }
 }
 
 static char *stack_top;
@@ -62,9 +64,8 @@ extern void uart_init_ppc(int qemu);
 
 int main(int argc, char **argv) {
     int stack_dummy;
-    stack_top = (char*)&stack_dummy;
+    stack_top = (char *)&stack_dummy;
 
-    // microwatt has argc/r3 = 0 whereas QEMU has r3 set in head.S
     uart_init_ppc(argc);
 
     #if MICROPY_ENABLE_PYSTACK
@@ -94,7 +95,7 @@ int main(int argc, char **argv) {
     pyexec_friendly_repl();
     #endif
     #else
-    pyexec_frozen_module("frozentest.py");
+    pyexec_frozen_module("frozentest.py", false);
     #endif
     mp_deinit();
     return 0;
@@ -107,10 +108,10 @@ void gc_collect(void) {
     gc_collect_start();
     gc_collect_root(&dummy, ((mp_uint_t)stack_top - (mp_uint_t)&dummy) / sizeof(mp_uint_t));
     gc_collect_end();
-    gc_dump_info();
+    gc_dump_info(&mp_plat_print);
 }
 
-mp_lexer_t *mp_lexer_new_from_file(const char *filename) {
+mp_lexer_t *mp_lexer_new_from_file(qstr filename) {
     mp_raise_OSError(MP_ENOENT);
 }
 
@@ -124,11 +125,15 @@ mp_obj_t mp_builtin_open(size_t n_args, const mp_obj_t *args, mp_map_t *kwargs) 
 MP_DEFINE_CONST_FUN_OBJ_KW(mp_builtin_open_obj, 1, mp_builtin_open);
 
 void nlr_jump_fail(void *val) {
-    while (1);
+    while (1) {
+        ;
+    }
 }
 
 void NORETURN __fatal_error(const char *msg) {
-    while (1);
+    while (1) {
+        ;
+    }
 }
 
 #ifndef NDEBUG

@@ -26,10 +26,10 @@
 
 #include "py/runtime.h"
 #include "py/mphal.h"
+#include "shared/runtime/softtimer.h"
 #include "irq.h"
 #include "pendsv.h"
 #include "systick.h"
-#include "softtimer.h"
 #include "pybthread.h"
 
 extern __IO uint32_t uwTick;
@@ -43,7 +43,7 @@ void SysTick_Handler(void) {
     uint32_t uw_tick = uwTick + 1;
     uwTick = uw_tick;
 
-    // Read the systick control regster. This has the side effect of clearing
+    // Read the systick control register. This has the side effect of clearing
     // the COUNTFLAG bit, which makes the logic in mp_hal_ticks_us
     // work properly.
     SysTick->CTRL;
@@ -96,12 +96,12 @@ void mp_hal_delay_ms(mp_uint_t Delay) {
         // IRQs enabled, so can use systick counter to do the delay
         uint32_t start = uwTick;
         // Wraparound of tick is taken care of by 2's complement arithmetic.
-        while (uwTick - start < Delay) {
+        do {
             // This macro will execute the necessary idle behaviour.  It may
             // raise an exception, switch threads or enter sleep mode (waiting for
             // (at least) the SysTick interrupt).
             MICROPY_EVENT_POLL_HOOK
-        }
+        } while (uwTick - start < Delay);
     } else {
         // IRQs disabled, so need to use a busy loop for the delay.
         // To prevent possible overflow of the counter we use a double loop.
@@ -154,7 +154,7 @@ mp_uint_t mp_hal_ticks_us(void) {
     mp_uint_t irq_state = disable_irq();
     uint32_t counter = SysTick->VAL;
     uint32_t milliseconds = HAL_GetTick();
-    uint32_t status  = SysTick->CTRL;
+    uint32_t status = SysTick->CTRL;
     enable_irq(irq_state);
 
     // It's still possible for the countflag bit to get set if the counter was

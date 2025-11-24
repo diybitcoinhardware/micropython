@@ -34,9 +34,8 @@
 #if MICROPY_EMIT_THUMB || MICROPY_EMIT_INLINE_THUMB
 
 #include "py/mpstate.h"
-#include "py/persistentcode.h"
-#include "py/mphal.h"
 #include "py/asmthumb.h"
+#include "py/misc.h"
 
 #define UNSIGNED_FIT5(x) ((uint32_t)(x) < 32)
 #define UNSIGNED_FIT7(x) ((uint32_t)(x) < 128)
@@ -56,26 +55,15 @@
 #define OP_LDR_W_HI(reg_base) (0xf8d0 | (reg_base))
 #define OP_LDR_W_LO(reg_dest, imm12) ((reg_dest) << 12 | (imm12))
 
+#define OP_LDRH_W_HI(reg_base) (0xf8b0 | (reg_base))
+#define OP_LDRH_W_LO(reg_dest, imm12) ((reg_dest) << 12 | (imm12))
+
 static inline byte *asm_thumb_get_cur_to_write_bytes(asm_thumb_t *as, int n) {
     return mp_asm_base_get_cur_to_write_bytes(&as->base, n);
 }
 
-void asm_thumb_end_pass(asm_thumb_t *as) {
-    (void)as;
-    // could check labels are resolved...
-
-    #if __ICACHE_PRESENT == 1
-    if (as->base.pass == MP_ASM_PASS_EMIT) {
-        // flush D-cache, so the code emitted is stored in memory
-        MP_HAL_CLEAN_DCACHE(as->base.code_base, as->base.code_size);
-        // invalidate I-cache
-        SCB_InvalidateICache();
-    }
-    #endif
-}
-
 /*
-STATIC void asm_thumb_write_byte_1(asm_thumb_t *as, byte b1) {
+static void asm_thumb_write_byte_1(asm_thumb_t *as, byte b1) {
     byte *c = asm_thumb_get_cur_to_write_bytes(as, 1);
     c[0] = b1;
 }
@@ -87,7 +75,7 @@ STATIC void asm_thumb_write_byte_1(asm_thumb_t *as, byte b1) {
 #define IMM32_L2(x) (((x) >> 16) & 0xff)
 #define IMM32_L3(x) (((x) >> 24) & 0xff)
 
-STATIC void asm_thumb_write_word32(asm_thumb_t *as, int w32) {
+static void asm_thumb_write_word32(asm_thumb_t *as, int w32) {
     byte *c = asm_thumb_get_cur_to_write_bytes(as, 4);
     c[0] = IMM32_L0(w32);
     c[1] = IMM32_L1(w32);
@@ -122,7 +110,7 @@ void asm_thumb_entry(asm_thumb_t *as, int num_locals) {
 
     // If this Thumb machine code is run from ARM state then add a prelude
     // to switch to Thumb state for the duration of the function.
-    #if MICROPY_DYNAMIC_COMPILER || MICROPY_EMIT_ARM || (defined(__arm__) && !defined(__thumb2__))
+    #if MICROPY_DYNAMIC_COMPILER || MICROPY_EMIT_ARM || (defined(__arm__) && !defined(__thumb2__) && !defined(__thumb__))
     #if MICROPY_DYNAMIC_COMPILER
     if (mp_dynamic_compiler.native_arch == MP_NATIVE_ARCH_ARMV6)
     #endif
@@ -171,10 +159,20 @@ void asm_thumb_entry(asm_thumb_t *as, int num_locals) {
     }
     asm_thumb_op16(as, OP_PUSH_RLIST_LR(reglist));
     if (stack_adjust > 0) {
-        if (UNSIGNED_FIT7(stack_adjust)) {
-            asm_thumb_op16(as, OP_SUB_SP(stack_adjust));
+        if (asm_thumb_allow_armv7m(as)) {
+            if (UNSIGNED_FIT7(stack_adjust)) {
+                asm_thumb_op16(as, OP_SUB_SP(stack_adjust));
+            } else {
+                asm_thumb_op32(as, OP_SUB_W_RRI_HI(ASM_THUMB_REG_SP), OP_SUB_W_RRI_LO(ASM_THUMB_REG_SP, stack_adjust * 4));
+            }
         } else {
-            asm_thumb_op32(as, OP_SUB_W_RRI_HI(ASM_THUMB_REG_SP), OP_SUB_W_RRI_LO(ASM_THUMB_REG_SP, stack_adjust * 4));
+            int adj = stack_adjust;
+            // we don't expect the stack_adjust to be massive
+            while (!UNSIGNED_FIT7(adj)) {
+                asm_thumb_op16(as, OP_SUB_SP(127));
+                adj -= 127;
+            }
+            asm_thumb_op16(as, OP_SUB_SP(adj));
         }
     }
     as->push_reglist = reglist;
@@ -183,16 +181,26 @@ void asm_thumb_entry(asm_thumb_t *as, int num_locals) {
 
 void asm_thumb_exit(asm_thumb_t *as) {
     if (as->stack_adjust > 0) {
-        if (UNSIGNED_FIT7(as->stack_adjust)) {
-            asm_thumb_op16(as, OP_ADD_SP(as->stack_adjust));
+        if (asm_thumb_allow_armv7m(as)) {
+            if (UNSIGNED_FIT7(as->stack_adjust)) {
+                asm_thumb_op16(as, OP_ADD_SP(as->stack_adjust));
+            } else {
+                asm_thumb_op32(as, OP_ADD_W_RRI_HI(ASM_THUMB_REG_SP), OP_ADD_W_RRI_LO(ASM_THUMB_REG_SP, as->stack_adjust * 4));
+            }
         } else {
-            asm_thumb_op32(as, OP_ADD_W_RRI_HI(ASM_THUMB_REG_SP), OP_ADD_W_RRI_LO(ASM_THUMB_REG_SP, as->stack_adjust * 4));
+            int adj = as->stack_adjust;
+            // we don't expect the stack_adjust to be massive
+            while (!UNSIGNED_FIT7(adj)) {
+                asm_thumb_op16(as, OP_ADD_SP(127));
+                adj -= 127;
+            }
+            asm_thumb_op16(as, OP_ADD_SP(adj));
         }
     }
     asm_thumb_op16(as, OP_POP_RLIST_PC(as->push_reglist));
 }
 
-STATIC mp_uint_t get_label_dest(asm_thumb_t *as, uint label) {
+static mp_uint_t get_label_dest(asm_thumb_t *as, uint label) {
     assert(label < as->base.max_num_labels);
     return as->base.label_offsets[label];
 }
@@ -242,12 +250,16 @@ void asm_thumb_mov_reg_reg(asm_thumb_t *as, uint reg_dest, uint reg_src) {
 }
 
 // if loading lo half with movw, the i16 value will be zero extended into the r32 register!
-size_t asm_thumb_mov_reg_i16(asm_thumb_t *as, uint mov_op, uint reg_dest, int i16_src) {
+void asm_thumb_mov_reg_i16(asm_thumb_t *as, uint mov_op, uint reg_dest, int i16_src) {
     assert(reg_dest < ASM_THUMB_REG_R15);
-    size_t loc = mp_asm_base_get_code_pos(&as->base);
     // mov[wt] reg_dest, #i16_src
     asm_thumb_op32(as, mov_op | ((i16_src >> 1) & 0x0400) | ((i16_src >> 12) & 0xf), ((i16_src << 4) & 0x7000) | (reg_dest << 8) | (i16_src & 0xff));
-    return loc;
+}
+
+static void asm_thumb_mov_rlo_i16(asm_thumb_t *as, uint rlo_dest, int i16_src) {
+    asm_thumb_mov_rlo_i8(as, rlo_dest, (i16_src >> 8) & 0xff);
+    asm_thumb_lsl_rlo_rlo_i5(as, rlo_dest, rlo_dest, 8);
+    asm_thumb_add_rlo_i8(as, rlo_dest, i16_src & 0xff);
 }
 
 #define OP_B_N(byte_offset) (0xe000 | (((byte_offset) >> 1) & 0x07ff))
@@ -262,7 +274,7 @@ bool asm_thumb_b_n_label(asm_thumb_t *as, uint label) {
 
 #define OP_BCC_N(cond, byte_offset) (0xd000 | ((cond) << 8) | (((byte_offset) >> 1) & 0x00ff))
 
-// all these bit arithmetics need coverage testing!
+// all these bit-arithmetic operations need coverage testing!
 #define OP_BCC_W_HI(cond, byte_offset) (0xf000 | ((cond) << 6) | (((byte_offset) >> 10) & 0x0400) | (((byte_offset) >> 14) & 0x003f))
 #define OP_BCC_W_LO(byte_offset) (0x8000 | ((byte_offset) & 0x2000) | (((byte_offset) >> 1) & 0x0fff))
 
@@ -273,9 +285,12 @@ bool asm_thumb_bcc_nw_label(asm_thumb_t *as, int cond, uint label, bool wide) {
     if (!wide) {
         asm_thumb_op16(as, OP_BCC_N(cond, rel));
         return as->base.pass != MP_ASM_PASS_EMIT || SIGNED_FIT9(rel);
-    } else {
+    } else if (asm_thumb_allow_armv7m(as)) {
         asm_thumb_op32(as, OP_BCC_W_HI(cond, rel), OP_BCC_W_LO(rel));
         return true;
+    } else {
+        // this method should not be called for ARMV6M
+        return false;
     }
 }
 
@@ -296,8 +311,30 @@ size_t asm_thumb_mov_reg_i32(asm_thumb_t *as, uint reg_dest, mp_uint_t i32) {
 
     size_t loc = mp_asm_base_get_code_pos(&as->base);
 
-    asm_thumb_mov_reg_i16(as, ASM_THUMB_OP_MOVW, reg_dest, i32);
-    asm_thumb_mov_reg_i16(as, ASM_THUMB_OP_MOVT, reg_dest, i32 >> 16);
+    if (asm_thumb_allow_armv7m(as)) {
+        asm_thumb_mov_reg_i16(as, ASM_THUMB_OP_MOVW, reg_dest, i32);
+        asm_thumb_mov_reg_i16(as, ASM_THUMB_OP_MOVT, reg_dest, i32 >> 16);
+    } else {
+        // should only be called with lo reg for ARMV6M
+        assert(reg_dest < ASM_THUMB_REG_R8);
+
+        // sanity check that generated code is aligned
+        assert(!as->base.code_base || !(3u & (uintptr_t)as->base.code_base));
+
+        // basically:
+        //        (nop)
+        //        ldr reg_dest, _data
+        //        b 1f
+        // _data: .word i32
+        //  1:
+        if (as->base.code_offset & 2u) {
+            asm_thumb_op16(as, ASM_THUMB_OP_NOP);
+        }
+        asm_thumb_ldr_rlo_pcrel_i8(as, reg_dest, 0);
+        asm_thumb_op16(as, OP_B_N(2));
+        asm_thumb_op16(as, i32 & 0xffff);
+        asm_thumb_op16(as, i32 >> 16);
+    }
 
     return loc;
 }
@@ -305,27 +342,66 @@ size_t asm_thumb_mov_reg_i32(asm_thumb_t *as, uint reg_dest, mp_uint_t i32) {
 void asm_thumb_mov_reg_i32_optimised(asm_thumb_t *as, uint reg_dest, int i32) {
     if (reg_dest < 8 && UNSIGNED_FIT8(i32)) {
         asm_thumb_mov_rlo_i8(as, reg_dest, i32);
-    } else if (UNSIGNED_FIT16(i32)) {
-        asm_thumb_mov_reg_i16(as, ASM_THUMB_OP_MOVW, reg_dest, i32);
+    } else if (asm_thumb_allow_armv7m(as)) {
+        if (UNSIGNED_FIT16(i32)) {
+            asm_thumb_mov_reg_i16(as, ASM_THUMB_OP_MOVW, reg_dest, i32);
+        } else {
+            asm_thumb_mov_reg_i32(as, reg_dest, i32);
+        }
     } else {
-        asm_thumb_mov_reg_i32(as, reg_dest, i32);
+        uint rlo_dest = reg_dest;
+        assert(rlo_dest < ASM_THUMB_REG_R8); // should never be called for ARMV6M
+
+        bool negate = i32 < 0 && ((i32 + i32) & 0xffffffffu); // don't negate 0x80000000
+        if (negate) {
+            i32 = -i32;
+        }
+
+        uint clz = mp_clz(i32);
+        uint ctz = i32 ? mp_ctz(i32) : 0;
+        assert(clz + ctz <= 32);
+        if (clz + ctz >= 24) {
+            asm_thumb_mov_rlo_i8(as, rlo_dest, (i32 >> ctz) & 0xff);
+            asm_thumb_lsl_rlo_rlo_i5(as, rlo_dest, rlo_dest, ctz);
+        } else if (UNSIGNED_FIT16(i32)) {
+            asm_thumb_mov_rlo_i16(as, rlo_dest, i32);
+        } else {
+            if (negate) {
+                // no point in negating if we're storing in 32 bit anyway
+                negate = false;
+                i32 = -i32;
+            }
+            asm_thumb_mov_reg_i32(as, rlo_dest, i32);
+        }
+        if (negate) {
+            asm_thumb_neg_rlo_rlo(as, rlo_dest, rlo_dest);
+        }
     }
 }
 
 #define OP_STR_TO_SP_OFFSET(rlo_dest, word_offset) (0x9000 | ((rlo_dest) << 8) | ((word_offset) & 0x00ff))
 #define OP_LDR_FROM_SP_OFFSET(rlo_dest, word_offset) (0x9800 | ((rlo_dest) << 8) | ((word_offset) & 0x00ff))
 
+static void asm_thumb_mov_local_check(asm_thumb_t *as, int word_offset) {
+    if (as->base.pass >= MP_ASM_PASS_EMIT) {
+        assert(word_offset >= 0);
+        if (!UNSIGNED_FIT8(word_offset)) {
+            mp_raise_NotImplementedError(MP_ERROR_TEXT("too many locals for native method"));
+        }
+    }
+}
+
 void asm_thumb_mov_local_reg(asm_thumb_t *as, int local_num, uint rlo_src) {
     assert(rlo_src < ASM_THUMB_REG_R8);
     int word_offset = local_num;
-    assert(as->base.pass < MP_ASM_PASS_EMIT || word_offset >= 0);
+    asm_thumb_mov_local_check(as, word_offset);
     asm_thumb_op16(as, OP_STR_TO_SP_OFFSET(rlo_src, word_offset));
 }
 
 void asm_thumb_mov_reg_local(asm_thumb_t *as, uint rlo_dest, int local_num) {
     assert(rlo_dest < ASM_THUMB_REG_R8);
     int word_offset = local_num;
-    assert(as->base.pass < MP_ASM_PASS_EMIT || word_offset >= 0);
+    asm_thumb_mov_local_check(as, word_offset);
     asm_thumb_op16(as, OP_LDR_FROM_SP_OFFSET(rlo_dest, word_offset));
 }
 
@@ -341,21 +417,77 @@ void asm_thumb_mov_reg_local_addr(asm_thumb_t *as, uint rlo_dest, int local_num)
 void asm_thumb_mov_reg_pcrel(asm_thumb_t *as, uint rlo_dest, uint label) {
     mp_uint_t dest = get_label_dest(as, label);
     mp_int_t rel = dest - as->base.code_offset;
-    rel -= 4 + 4; // adjust for mov_reg_i16 and then PC+4 prefetch of add_reg_reg
     rel |= 1; // to stay in Thumb state when jumping to this address
-    asm_thumb_mov_reg_i16(as, ASM_THUMB_OP_MOVW, rlo_dest, rel); // 4 bytes
+    if (asm_thumb_allow_armv7m(as)) {
+        rel -= 6 + 4; // adjust for mov_reg_i16, sxth_rlo_rlo and then PC+4 prefetch of add_reg_reg
+        asm_thumb_mov_reg_i16(as, ASM_THUMB_OP_MOVW, rlo_dest, rel); // 4 bytes
+        asm_thumb_sxth_rlo_rlo(as, rlo_dest, rlo_dest); // 2 bytes
+    } else {
+        rel -= 8 + 4; // adjust for four instructions and then PC+4 prefetch of add_reg_reg
+        // 6 bytes
+        asm_thumb_mov_rlo_i16(as, rlo_dest, rel);
+        // 2 bytes - not always needed, but we want to keep the size the same
+        asm_thumb_sxth_rlo_rlo(as, rlo_dest, rlo_dest);
+    }
     asm_thumb_add_reg_reg(as, rlo_dest, ASM_THUMB_REG_R15); // 2 bytes
 }
 
+// ARMv7-M only
 static inline void asm_thumb_ldr_reg_reg_i12(asm_thumb_t *as, uint reg_dest, uint reg_base, uint word_offset) {
     asm_thumb_op32(as, OP_LDR_W_HI(reg_base), OP_LDR_W_LO(reg_dest, word_offset * 4));
+}
+
+// emits code for: reg_dest = reg_base + offset << offset_shift
+static void asm_thumb_add_reg_reg_offset(asm_thumb_t *as, uint reg_dest, uint reg_base, uint offset, uint offset_shift) {
+    if (reg_dest < ASM_THUMB_REG_R8 && reg_base < ASM_THUMB_REG_R8) {
+        if (offset << offset_shift < 256) {
+            if (reg_dest != reg_base) {
+                asm_thumb_mov_reg_reg(as, reg_dest, reg_base);
+            }
+            asm_thumb_add_rlo_i8(as, reg_dest, offset << offset_shift);
+        } else if (UNSIGNED_FIT8(offset) && reg_dest != reg_base) {
+            asm_thumb_mov_rlo_i8(as, reg_dest, offset);
+            asm_thumb_lsl_rlo_rlo_i5(as, reg_dest, reg_dest, offset_shift);
+            asm_thumb_add_rlo_rlo_rlo(as, reg_dest, reg_dest, reg_base);
+        } else if (reg_dest != reg_base) {
+            asm_thumb_mov_rlo_i16(as, reg_dest, offset << offset_shift);
+            asm_thumb_add_rlo_rlo_rlo(as, reg_dest, reg_dest, reg_dest);
+        } else {
+            uint reg_other = reg_dest ^ 7;
+            asm_thumb_op16(as, OP_PUSH_RLIST((1 << reg_other)));
+            asm_thumb_mov_rlo_i16(as, reg_other, offset << offset_shift);
+            asm_thumb_add_rlo_rlo_rlo(as, reg_dest, reg_dest, reg_other);
+            asm_thumb_op16(as, OP_POP_RLIST((1 << reg_other)));
+        }
+    } else {
+        assert(0); // should never be called for ARMV6M
+    }
 }
 
 void asm_thumb_ldr_reg_reg_i12_optimised(asm_thumb_t *as, uint reg_dest, uint reg_base, uint word_offset) {
     if (reg_dest < ASM_THUMB_REG_R8 && reg_base < ASM_THUMB_REG_R8 && UNSIGNED_FIT5(word_offset)) {
         asm_thumb_ldr_rlo_rlo_i5(as, reg_dest, reg_base, word_offset);
-    } else {
+    } else if (asm_thumb_allow_armv7m(as)) {
         asm_thumb_ldr_reg_reg_i12(as, reg_dest, reg_base, word_offset);
+    } else {
+        asm_thumb_add_reg_reg_offset(as, reg_dest, reg_base, word_offset - 31, 2);
+        asm_thumb_ldr_rlo_rlo_i5(as, reg_dest, reg_dest, 31);
+    }
+}
+
+// ARMv7-M only
+static inline void asm_thumb_ldrh_reg_reg_i12(asm_thumb_t *as, uint reg_dest, uint reg_base, uint uint16_offset) {
+    asm_thumb_op32(as, OP_LDRH_W_HI(reg_base), OP_LDRH_W_LO(reg_dest, uint16_offset * 2));
+}
+
+void asm_thumb_ldrh_reg_reg_i12_optimised(asm_thumb_t *as, uint reg_dest, uint reg_base, uint uint16_offset) {
+    if (reg_dest < ASM_THUMB_REG_R8 && reg_base < ASM_THUMB_REG_R8 && UNSIGNED_FIT5(uint16_offset)) {
+        asm_thumb_ldrh_rlo_rlo_i5(as, reg_dest, reg_base, uint16_offset);
+    } else if (asm_thumb_allow_armv7m(as)) {
+        asm_thumb_ldrh_reg_reg_i12(as, reg_dest, reg_base, uint16_offset);
+    } else {
+        asm_thumb_add_reg_reg_offset(as, reg_dest, reg_base, uint16_offset - 31, 1);
+        asm_thumb_ldrh_rlo_rlo_i5(as, reg_dest, reg_dest, 31);
     }
 }
 
@@ -367,18 +499,31 @@ void asm_thumb_b_label(asm_thumb_t *as, uint label) {
     mp_uint_t dest = get_label_dest(as, label);
     mp_int_t rel = dest - as->base.code_offset;
     rel -= 4; // account for instruction prefetch, PC is 4 bytes ahead of this instruction
+
     if (dest != (mp_uint_t)-1 && rel <= -4) {
         // is a backwards jump, so we know the size of the jump on the first pass
         // calculate rel assuming 12 bit relative jump
         if (SIGNED_FIT12(rel)) {
             asm_thumb_op16(as, OP_B_N(rel));
-        } else {
-            goto large_jump;
+            return;
         }
-    } else {
-        // is a forwards jump, so need to assume it's large
-        large_jump:
+    }
+
+    // is a large backwards jump, or a forwards jump (that must be assumed large)
+
+    if (asm_thumb_allow_armv7m(as)) {
         asm_thumb_op32(as, OP_BW_HI(rel), OP_BW_LO(rel));
+    } else {
+        if (SIGNED_FIT12(rel)) {
+            // this code path has to be the same number of instructions irrespective of rel
+            asm_thumb_op16(as, OP_B_N(rel));
+        } else {
+            asm_thumb_op16(as, ASM_THUMB_OP_NOP);
+            if (dest != (mp_uint_t)-1) {
+                // we have an actual branch > 12 bits; this is not handled yet
+                mp_raise_NotImplementedError(MP_ERROR_TEXT("native method too big"));
+            }
+        }
     }
 }
 
@@ -386,19 +531,37 @@ void asm_thumb_bcc_label(asm_thumb_t *as, int cond, uint label) {
     mp_uint_t dest = get_label_dest(as, label);
     mp_int_t rel = dest - as->base.code_offset;
     rel -= 4; // account for instruction prefetch, PC is 4 bytes ahead of this instruction
+
     if (dest != (mp_uint_t)-1 && rel <= -4) {
         // is a backwards jump, so we know the size of the jump on the first pass
         // calculate rel assuming 9 bit relative jump
         if (SIGNED_FIT9(rel)) {
             asm_thumb_op16(as, OP_BCC_N(cond, rel));
-        } else {
-            goto large_jump;
+            return;
         }
-    } else {
-        // is a forwards jump, so need to assume it's large
-        large_jump:
-        asm_thumb_op32(as, OP_BCC_W_HI(cond, rel), OP_BCC_W_LO(rel));
     }
+
+    // is a large backwards jump, or a forwards jump (that must be assumed large)
+
+    if (asm_thumb_allow_armv7m(as)) {
+        asm_thumb_op32(as, OP_BCC_W_HI(cond, rel), OP_BCC_W_LO(rel));
+    } else {
+        // reverse the sense of the branch to jump over a longer branch
+        asm_thumb_op16(as, OP_BCC_N(cond ^ 1, 0));
+        asm_thumb_b_label(as, label);
+    }
+}
+
+void asm_thumb_bcc_rel9(asm_thumb_t *as, int cond, int rel) {
+    rel -= 4; // account for instruction prefetch, PC is 4 bytes ahead of this instruction
+    assert(SIGNED_FIT9(rel));
+    asm_thumb_op16(as, OP_BCC_N(cond, rel));
+}
+
+void asm_thumb_b_rel12(asm_thumb_t *as, int rel) {
+    rel -= 4; // account for instruction prefetch, PC is 4 bytes ahead of this instruction
+    assert(SIGNED_FIT12(rel));
+    asm_thumb_op16(as, OP_B_N(rel));
 }
 
 #define OP_BLX(reg) (0x4780 | ((reg) << 3))

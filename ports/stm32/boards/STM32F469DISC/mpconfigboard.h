@@ -2,9 +2,6 @@
 #define MICROPY_BOARD_EARLY_INIT    STM32F469DISC_board_early_init
 void STM32F469DISC_board_early_init(void);
 
-// TODO: Software SPI not needed anymore, remove after testing
-//#define MICROPY_F469DISC_USE_SOFTSPI // Temporary, enables software 1-bit SPI
-
 #define MICROPY_HW_BOARD_NAME       "F469DISC"
 #define MICROPY_HW_MCU_NAME         "STM32F469"
 
@@ -17,38 +14,37 @@ void STM32F469DISC_board_early_init(void);
 #define MICROPY_HW_ENABLE_SDCARD    (1)
 #define MICROPY_PY_UCRYPTOLIB_CONSTS (1)
 
-// use external SPI flash for storage
-#define MICROPY_HW_SPIFLASH_SIZE_BITS (128 * 1024 * 1024)
-
-#ifdef MICROPY_F469DISC_USE_SOFTSPI
-
-#define MICROPY_HW_SPIFLASH_CS      (pin_B6)
-#define MICROPY_HW_SPIFLASH_SCK     (pin_F10)
-#define MICROPY_HW_SPIFLASH_MOSI    (pin_F8)
-#define MICROPY_HW_SPIFLASH_MISO    (pin_F9)
-
-#else // MICROPY_F469DISC_USE_SOFTSPI
-
+// QSPI flash storage configuration
+#if !BUILDING_MBOOT
+#define MICROPY_HW_SPIFLASH_ENABLE_CACHE    (1)
+#endif
+#define MICROPY_HW_SPIFLASH_SOFT_RESET      (1)
+#define MICROPY_HW_SPIFLASH_SIZE_BITS       (128 * 1024 * 1024)
+#define MICROPY_HW_SPIFLASH_CHIP_PARAMS     (1) // enable extended parameters
 #define MICROPY_HW_QSPI_PRESCALER           (3)
-#define MICROPY_HW_QSPI_C4READ_DUMMY_CYCLES (8)
+#define MICROPY_HW_QSPIFLASH_DUMMY_CYCLES   (4)
 #define MICROPY_HW_QSPIFLASH_SIZE_BITS_LOG2 (27)
-#define MICROPY_HW_QSPIFLASH_CS     (pyb_pin_QSPI_CS)
-#define MICROPY_HW_QSPIFLASH_SCK    (pyb_pin_QSPI_CLK)
-#define MICROPY_HW_QSPIFLASH_IO0    (pyb_pin_QSPI_D0)
-#define MICROPY_HW_QSPIFLASH_IO1    (pyb_pin_QSPI_D1)
-#define MICROPY_HW_QSPIFLASH_IO2    (pyb_pin_QSPI_D2)
-#define MICROPY_HW_QSPIFLASH_IO3    (pyb_pin_QSPI_D3)
+#define MICROPY_HW_QSPIFLASH_CS             (pyb_pin_QSPI_CS)
+#define MICROPY_HW_QSPIFLASH_SCK            (pyb_pin_QSPI_CLK)
+#define MICROPY_HW_QSPIFLASH_IO0            (pyb_pin_QSPI_D0)
+#define MICROPY_HW_QSPIFLASH_IO1            (pyb_pin_QSPI_D1)
+#define MICROPY_HW_QSPIFLASH_IO2            (pyb_pin_QSPI_D2)
+#define MICROPY_HW_QSPIFLASH_IO3            (pyb_pin_QSPI_D3)
 
-#endif // MICROPY_F469DISC_USE_SOFTSPI
-
-// block device config for SPI flash
+// QSPI flash block device configuration
 extern const struct _mp_spiflash_config_t spiflash_config;
 extern struct _spi_bdev_t spi_bdev;
+//#define MICROPY_HW_BDEV_SPIFLASH    (&spi_bdev)
+//#define MICROPY_HW_BDEV_SPIFLASH_CONFIG (&spiflash_config)
+//#define MICROPY_HW_BDEV_SPIFLASH_SIZE_BYTES (MICROPY_HW_SPIFLASH_SIZE_BITS / 8)
+//#define MICROPY_HW_BDEV_SPIFLASH_EXTENDED (&spi_bdev) // for extended block protocol
+
+// Block device 2 is the QSPI flash, used for the second filesystem
 #define MICROPY_HW_BDEV2_IOCTL(op, arg) ( \
     (op) == BDEV_IOCTL_NUM_BLOCKS ? (MICROPY_HW_SPIFLASH_SIZE_BITS / 8 / FLASH_BLOCK_SIZE) : \
     (op) == BDEV_IOCTL_INIT ? spi_bdev_ioctl(&spi_bdev, (op), (uint32_t)&spiflash_config) : \
     spi_bdev_ioctl(&spi_bdev, (op), (arg)) \
-)
+    )
 #define MICROPY_HW_BDEV2_READBLOCKS(dest, bl, n) spi_bdev_readblocks(&spi_bdev, (dest), (bl), (n))
 #define MICROPY_HW_BDEV2_WRITEBLOCKS(src, bl, n) spi_bdev_writeblocks(&spi_bdev, (src), (bl), (n))
 // The volume label used when creating the secondary flash filesystem
@@ -72,7 +68,7 @@ extern struct _spi_bdev_t spi_bdev;
 #define MODULE_SCARD_ENABLED        (1)
 #endif
 #ifndef MODULE_SDRAM_ENABLED
-#define MODULE_SDRAM_ENABLED 		(1)
+#define MODULE_SDRAM_ENABLED            (1)
 #endif
 // #define MICROPY_PY_THREAD           (1)
 
@@ -96,7 +92,7 @@ extern struct _spi_bdev_t spi_bdev;
 #define MICROPY_HW_UART2_RX         (pin_A3) // Dummy, not routed on PCB
 #define MICROPY_HW_UART2_CK         (pin_A4)
 
-// I2C busses
+// I2C buses
 #define MICROPY_HW_I2C1_SCL         (pin_B8)
 #define MICROPY_HW_I2C1_SDA         (pin_B9)
 
@@ -106,7 +102,7 @@ extern struct _spi_bdev_t spi_bdev;
 #define MICROPY_HW_SPI2_MISO        (pin_B14)
 #define MICROPY_HW_SPI2_MOSI        (pin_B15)
 
-// CAN busses
+// CAN buses
 #define MICROPY_HW_CAN1_TX          (pin_B9)
 #define MICROPY_HW_CAN1_RX          (pin_B8)
 
@@ -139,4 +135,3 @@ extern struct _spi_bdev_t spi_bdev;
 #define MICROPY_HW_USB_FS (1)
 #define MICROPY_HW_USB_VBUS_DETECT_PIN (pin_A9)
 #define MICROPY_HW_USB_OTG_ID_PIN      (pin_A10)
-

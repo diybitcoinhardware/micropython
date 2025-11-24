@@ -39,7 +39,7 @@ void mp_seq_multiply(const void *items, size_t item_sz, size_t len, size_t times
     for (size_t i = 0; i < times; i++) {
         size_t copy_sz = item_sz * len;
         memcpy(dest, items, copy_sz);
-        dest = (char*)dest + copy_sz;
+        dest = (char *)dest + copy_sz;
     }
 }
 
@@ -63,11 +63,7 @@ bool mp_seq_get_fast_slice_indexes(mp_uint_t len, mp_obj_t slice, mp_bound_slice
     return indexes->step == 1;
 }
 
-#endif
-
-mp_obj_t mp_seq_extract_slice(size_t len, const mp_obj_t *seq, mp_bound_slice_t *indexes) {
-    (void)len; // TODO can we remove len from the arg list?
-
+mp_obj_t mp_seq_extract_slice(const mp_obj_t *seq, mp_bound_slice_t *indexes) {
     mp_int_t start = indexes->start, stop = indexes->stop;
     mp_int_t step = indexes->step;
 
@@ -87,6 +83,8 @@ mp_obj_t mp_seq_extract_slice(size_t len, const mp_obj_t *seq, mp_bound_slice_t 
     return res;
 }
 
+#endif
+
 // Special-case comparison function for sequences of bytes
 // Don't pass MP_BINARY_OP_NOT_EQUAL here
 bool mp_seq_cmp_bytes(mp_uint_t op, const byte *data1, size_t len1, const byte *data2, size_t len2) {
@@ -96,7 +94,7 @@ bool mp_seq_cmp_bytes(mp_uint_t op, const byte *data1, size_t len1, const byte *
 
     // Let's deal only with > & >=
     if (op == MP_BINARY_OP_LESS || op == MP_BINARY_OP_LESS_EQUAL) {
-        SWAP(const byte*, data1, data2);
+        SWAP(const byte *, data1, data2);
         SWAP(size_t, len1, len2);
         if (op == MP_BINARY_OP_LESS) {
             op = MP_BINARY_OP_MORE;
@@ -156,14 +154,14 @@ bool mp_seq_cmp_objs(mp_uint_t op, const mp_obj_t *items1, size_t len1, const mp
             continue;
         }
 
-        // Othewise, if they are not equal, we can have final decision based on them
+        // Otherwise, if they are not equal, we can have final decision based on them
         if (op == MP_BINARY_OP_EQUAL) {
             // In particular, if we are checking for equality, here're the answer
             return false;
         }
 
         // Otherwise, application of relation op gives the answer
-        return (mp_binary_op(op, items1[i], items2[i]) == mp_const_true);
+        return mp_binary_op(op, items1[i], items2[i]) == mp_const_true;
     }
 
     // If we had tie in the last element...
@@ -183,7 +181,7 @@ bool mp_seq_cmp_objs(mp_uint_t op, const mp_obj_t *items1, size_t len1, const mp
 
 // Special-case of index() which searches for mp_obj_t
 mp_obj_t mp_seq_index_obj(const mp_obj_t *items, size_t len, size_t n_args, const mp_obj_t *args) {
-    mp_obj_type_t *type = mp_obj_get_type(args[0]);
+    const mp_obj_type_t *type = mp_obj_get_type(args[0]);
     mp_obj_t value = args[1];
     size_t start = 0;
     size_t stop = len;
@@ -202,15 +200,15 @@ mp_obj_t mp_seq_index_obj(const mp_obj_t *items, size_t len, size_t n_args, cons
         }
     }
 
-    mp_raise_ValueError("object not in sequence");
+    mp_raise_ValueError(MP_ERROR_TEXT("object not in sequence"));
 }
 
 mp_obj_t mp_seq_count_obj(const mp_obj_t *items, size_t len, mp_obj_t value) {
     size_t count = 0;
     for (size_t i = 0; i < len; i++) {
-         if (mp_obj_equal(items[i], value)) {
-              count++;
-         }
+        if (mp_obj_equal(items[i], value)) {
+            count++;
+        }
     }
 
     // Common sense says this cannot overflow small int

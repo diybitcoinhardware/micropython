@@ -1,44 +1,57 @@
-try:
-    import usocket as _socket
-except:
-    import _socket
-try:
-    import ussl as ssl
-except:
-    import ssl
-    # CPython only supports server_hostname with SSLContext
-    ssl = ssl.SSLContext()
+# Test making HTTPS requests to sites that may require advanced ciphers.
+
+import sys
+import select
+import socket
+import ssl
+
+# Don't run if ssl doesn't support required certificates (eg axtls).
+if not hasattr(ssl, "CERT_REQUIRED"):
+    print("SKIP")
+    raise SystemExit
 
 
 def test_one(site, opts):
-    ai = _socket.getaddrinfo(site, 443)
+    ai = socket.getaddrinfo(site, 443, socket.AF_INET)
     addr = ai[0][-1]
 
-    s = _socket.socket()
+    s = socket.socket(socket.AF_INET)
+
+    # Create SSLContext.
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    # CPython compatibility:
+    # - disable check_hostname
+    # - load default system certificate chain
+    # - must wait for socket to be writable before calling wrap_socket
+    if sys.implementation.name != "micropython":
+        ssl_context.check_hostname = False
+        ssl_context.load_default_certs()
+        select.select([], [s], [])
 
     try:
         s.connect(addr)
 
         if "sni" in opts:
-            s = ssl.wrap_socket(s, server_hostname=opts["host"])
+            s = ssl_context.wrap_socket(s, server_hostname=opts["host"])
         else:
-            s = ssl.wrap_socket(s)
+            s = ssl_context.wrap_socket(s)
 
-        s.write(b"GET / HTTP/1.0\r\nHost: %s\r\n\r\n" % bytes(site, 'latin'))
+        s.write(b"GET / HTTP/1.0\r\nHost: %s\r\n\r\n" % bytes(site, "latin"))
         resp = s.read(4096)
-#        print(resp)
+        if resp[:7] != b"HTTP/1.":
+            raise ValueError("response doesn't start with HTTP/1.")
+        # print(resp)
 
     finally:
         s.close()
 
 
 SITES = [
-    "google.com",
-    "www.google.com",
-    "api.telegram.org",
+    "www.github.com",
+    "micropython.org",
+    "pypi.org",
     {"host": "api.pushbullet.com", "sni": True},
-#    "w9rybpfril.execute-api.ap-southeast-2.amazonaws.com",
-    {"host": "w9rybpfril.execute-api.ap-southeast-2.amazonaws.com", "sni": True},
 ]
 
 
@@ -53,7 +66,7 @@ def main():
             test_one(site, opts)
             print(site, "ok")
         except Exception as e:
-            print(site, repr(e))
+            print(site, e)
 
 
 main()

@@ -41,8 +41,10 @@ This is a port of MicroPython to the Nordic Semiconductor nRF series of chips.
   * [PCA10056](http://www.nordicsemi.com/eng/Products/nRF52840-Preview-DK)
   * [PCA10059](https://www.nordicsemi.com/Software-and-Tools/Development-Kits/nRF52840-Dongle)
   * [Particle Xenon](https://docs.particle.io/xenon/)
+  * [nRF52840 MDK USB Dongle](boards/NRF52840_MDK_USB_DONGLE/README.md)
 * nRF9160
   * [PCA10090](https://www.nordicsemi.com/Software-and-Tools/Development-Kits/nRF9160-DK)
+  * [Actinius Icarus](https://www.actinius.com/icarus)
 
 ## Compile and Flash
 
@@ -56,12 +58,13 @@ By default, the PCA10040 (nrf52832) is used as compile target. To build and flas
 
     make submodules
     make
-    make flash
+    make deploy
 
 Alternatively the target board could be defined:
 
-     make BOARD=pca10040
-     make BOARD=pca10040 flash
+    make submodules
+    make BOARD=PCA10040
+    make BOARD=PCA10040 deploy
 
 ## Compile without LTO enabled
 
@@ -70,7 +73,7 @@ targets in the nrf-port. The `-flto` linker flag can be toggled easily by using
 the argument LTO when building. The example below shows how to disable LTO for
 the compilation:
 
-    make BOARD=pca10040 LTO=0
+    make BOARD=PCA10040 LTO=0
 
 **Note**: There have been several issues with use of LTO in conjunction with
 GNU ARM Embedded Toolchain 7.2.1/4Q17. It's recommended to use a toolchain after
@@ -85,56 +88,88 @@ First prepare the bluetooth folder by downloading Bluetooth LE stacks and header
 
 If the Bluetooth stacks has been downloaded, compile the target with the following command:
 
-    make BOARD=pca10040 SD=s132
+    make BOARD=PCA10040 SD=s132
 
 The **make sd** will trigger a flash of the bluetooth stack before that application is flashed. Note that **make sd** will perform a full erase of the chip, which could cause 3rd party bootloaders to also be wiped.
 
-    make BOARD=pca10040 SD=s132 sd
+    make BOARD=PCA10040 SD=s132 sd
 
 Note: further tuning of features to include in bluetooth or even setting up the device to use REPL over Bluetooth can be configured in the `bluetooth_conf.h`.
 
-## Compile with frozen modules
+## Compile with freeze manifest
 
-Frozen modules are Python modules compiled to bytecode and added to the firmware
-image, as part of MicroPython. They can be imported as usual, using the `import`
-statement. The advantage is that frozen modules use a lot less RAM as the
-bytecode is stored in flash, not in RAM like when importing from a filesystem.
-Also, frozen modules are available even when no filesystem is present to import
-from.
+Freeze manifests can be used by defining `FROZEN_MANIFEST` pointing to a
+`manifest.py`. This can either be done by a `make` invocation or by defining
+it in the specific target board's `mpconfigboard.mk`.
 
-To use frozen modules, put them in a directory (e.g. `freeze/`) and supply
-`make` with the given directory. For example:
+For example:
 
-     make BOARD=pca10040 FROZEN_MPY_DIR=freeze
+    make BOARD=PCA10040 FROZEN_MANIFEST=path/to/manifest.py
+
+In case of using the target board's makefile, add a line similar to this:
+
+    FROZEN_MANIFEST ?= $(BOARD_DIR)/manifest.py
+
+In these two examples, the manual `make` invocation will have precedence.
 
 ## Enable MICROPY_VFS_FAT
 As the `oofatfs` module is not having header guards that can exclude the implementation compile time, this port provides a flag to enable it explicitly. The MICROPY_VFS_FAT is by default set to 0 and has to be set to 1 if `oofatfs` files should be compiled. This will be in addition of setting `MICROPY_VFS` in mpconfigport.h.
 
 For example:
 
-     make BOARD=pca10040 MICROPY_VFS_FAT=1
+     make BOARD=PCA10040 MICROPY_VFS_FAT=1
+
+## Enable MICROPY_VFS_LFS1 or MICROPY_VFS_LFS2
+
+In order to enable `littlefs` as device flash filesystem, `MICROPY_VFS_LFS1`
+or `MICROPY_VFS_LFS2` can be set. This will be in addition of setting
+`MICROPY_VFS` in mpconfigport.h or mpconfigboard.h.
+
+For example:
+
+    make BOARD=PCA10056 MICROPY_VFS_LFS2=1
+
+## Set file system size
+
+The size of the file system on the internal flash is configured by the linker
+script parameter `_fs_size`. This can either be overridden by the linker script
+or dynamically through the makefile. By setting a value to the `FS_SIZE`.
+The number will be passed directly to the linker scripts in order to calculate
+the start and end of the file system. Note that the parameter value must be in
+linker script syntax as it is passed directly.
+
+For example, if we want to override the default file system size set by the
+linker scripts to use 256K:
+
+    make BOARD=PCA10056 MICROPY_VFS_LFS2=1 FS_SIZE=256K
+
+Also note that changing this size between builds might cause loss of files
+present from a previous firmware as it will format the file system due to a new
+location.
 
 ## Target Boards and Make Flags
 
-Target Board (BOARD) | Bluetooth Stack (SD)    | Bluetooth Support      | Flash Util
----------------------|-------------------------|------------------------|-------------------------------
-microbit             | s110                    | Peripheral             | [PyOCD](#pyocdopenocd-targets)
-pca10000             | s110                    | Peripheral             | [Segger](#segger-targets)
-pca10001             | s110                    | Peripheral             | [Segger](#segger-targets)
-pca10028             | s110                    | Peripheral             | [Segger](#segger-targets)
-pca10031             | s110                    | Peripheral             | [Segger](#segger-targets)
-wt51822_s4at         | s110                    | Peripheral             | Manual, see [datasheet](https://4tronix.co.uk/picobot2/WT51822-S4AT.pdf) for pinout
-pca10040             | s132                    | Peripheral and Central | [Segger](#segger-targets)
-feather52            | s132                    | Peripheral and Central | Manual, SWDIO and SWCLK solder points on the bottom side of the board
-arduino_primo        | s132                    | Peripheral and Central | [PyOCD](#pyocdopenocd-targets)
-ibk_blyst_nano       | s132                    | Peripheral and Central | [IDAP](#idap-midap-link-targets)
-idk_blyst_nano       | s132                    | Peripheral and Central | [IDAP](#idap-midap-link-targets)
-blueio_tag_evim      | s132                    | Peripheral and Central | [IDAP](#idap-midap-link-targets)
-evk_nina_b1          | s132                    | Peripheral and Central | [Segger](#segger-targets)
-pca10056             | s140                    | Peripheral and Central | [Segger](#segger-targets)
-pca10059             | s140                    | Peripheral and Central | Manual, SWDIO and SWCLK solder points on the sides.
-particle_xenon       | s140                    | Peripheral and Central | [Black Magic Probe](#black-magic-probe-targets)
-pca10090             | None (bsdlib.a)         | None (LTE/GNSS)        | [Segger](#segger-targets)
+Target Board (BOARD) | Bluetooth Stack (SD)    | Bluetooth Support      | Bootloader     | Default Flash Util
+---------------------|-------------------------|------------------------|----------------|-------------------
+MICROBIT             | s110                    | Peripheral             |                | [PyOCD](#pyocdopenocd-targets)
+PCA10000             | s110                    | Peripheral             |                | [Segger](#segger-targets)
+PCA10001             | s110                    | Peripheral             |                | [Segger](#segger-targets)
+PCA10028             | s110                    | Peripheral             |                | [Segger](#segger-targets)
+PCA10031             | s110                    | Peripheral             |                | [Segger](#segger-targets)
+WT51822_S4AT         | s110                    | Peripheral             |                | Manual, see [datasheet](https://4tronix.co.uk/picobot2/WT51822-S4AT.pdf) for pinout
+PCA10040             | s132                    | Peripheral and Central |                | [Segger](#segger-targets)
+FEATHER52            | s132                    | Peripheral and Central |                | Manual, SWDIO and SWCLK solder points on the bottom side of the board
+ARDUINO_PRIMO        | s132                    | Peripheral and Central |                | [PyOCD](#pyocdopenocd-targets)
+IBK_BLYST_NANO       | s132                    | Peripheral and Central |                | [IDAP](#idap-midap-link-targets)
+IDK_BLYST_NANO       | s132                    | Peripheral and Central |                | [IDAP](#idap-midap-link-targets)
+BLUEIO_TAG_EVIM      | s132                    | Peripheral and Central |                | [IDAP](#idap-midap-link-targets)
+EVK_NINA_B1          | s132                    | Peripheral and Central |                | [Segger](#segger-targets)
+PCA10056             | s140                    | Peripheral and Central |                | [Segger](#segger-targets)
+PCA10059             | s140                    | Peripheral and Central | OpenBootloader | [nrfutil](#nrfutil-targets)
+PARTICLE_XENON       | s140                    | Peripheral and Central |                | [Black Magic Probe](#black-magic-probe-targets)
+NRF52840_MDK_USB_DONGLE | s140                 | Peripheral and Central | OpenBootloader | [nrfutil](#nrfutil-targets)
+PCA10090             | None (bsdlib.a)         | None (LTE/GNSS)        |                | [Segger](#segger-targets)
+ACTINIUS_ICARUS      | None (bsdlib.a)         | None (LTE/GNSS)        |                | [Segger](#segger-targets)
 
 ## IDAP-M/IDAP-Link Targets
 
@@ -170,6 +205,31 @@ This requires no further dependencies other than `arm-none-eabi-gdb`.
 [this guide](https://github.com/blacksphere/blackmagic/wiki/Useful-GDB-commands)
 for more tips about using the BMP with GDB.
 
+## nRFUtil Targets
+
+Install the necessary Python packages that will be used for flashing using the bootloader:
+
+    sudo pip install nrfutil
+    sudo pip install intelhex
+
+The `intelhex` provides the `hexmerge.py` utility which is used by the Makefile
+to trim of the MBR in case SoftDevice flashing is requested.
+
+`nrfutil` as flashing backend also requires a serial port parameter to be defined
+in addition to the `deploy` target of make. For example:
+
+    make BOARD=NRF52840_MDK_USB_DONGLE NRFUTIL_PORT=/dev/ttyACM0 deploy
+
+If the target device is connected to `/dev/ttyACM0` serial port, the
+`NRFUTIL_PORT` parameter to make can be elided as it is the default serial
+port set by the Makefile.
+
+When enabling Bluetooth LE, as with the other flash utils, the SoftDevice
+needs to be flashed in the first firmware update. This can be done by issuing
+the `sd` target instead of `deploy`. For example:
+
+    make BOARD=NRF52840_MDK_USB_DONGLE SD=s140 NRFUTIL_PORT=/dev/ttyACM0 sd
+
 ## Bluetooth LE REPL
 
 The port also implements a BLE REPL driver. This feature is disabled by default, as it will deactivate the UART REPL when activated. As some of the nRF devices only have one UART, using the BLE REPL free's the UART instance such that it can be used as a general UART peripheral not bound to REPL.
@@ -184,3 +244,12 @@ Other:
 * nRF UART application for IPhone/Android
 
 WebBluetooth mode can also be configured by editing `bluetooth_conf.h` and set `BLUETOOTH_WEBBLUETOOTH_REPL` to 1. This will alternate advertisement between Eddystone URL and regular connectable advertisement. The Eddystone URL will point the phone or PC to download [WebBluetooth REPL](https://aykevl.nl/apps/nus/) (experimental), which subsequently can be used to connect to the Bluetooth REPL from the PC or Phone browser.
+
+
+## Pin numbering scheme for nrf52840-based boards
+
+Software Pins 0-31 correspond to physical pins 0.x and software Pins 32-47
+correspond to physical pins 1.x.
+
+Example:
+`Pin(47)` would be 1.15 on the PCA10059

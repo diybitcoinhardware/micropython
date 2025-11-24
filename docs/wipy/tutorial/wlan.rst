@@ -13,9 +13,9 @@ You can check the current mode (which is always ``WLAN.AP`` after power up)::
 
    >>> wlan.mode()
 
-.. warning:: 
-    When you change the WLAN mode following the instructions below, your WLAN 
-    connection to the WiPy will be broken. This means you will not be able 
+.. warning::
+    When you change the WLAN mode following the instructions below, your WLAN
+    connection to the WiPy will be broken. This means you will not be able
     to run these commands interactively over the WLAN.
 
     There are two ways around this::
@@ -50,14 +50,15 @@ Assigning a static IP address when booting
 If you want your WiPy to connect to your home router after boot-up, and with a fixed
 IP address so that you can access it via telnet or FTP, use the following script as /flash/boot.py::
 
-   import machine
+   import machine, network
    from network import WLAN
    wlan = WLAN() # get current object, without changing the mode
 
    if machine.reset_cause() != machine.SOFT_RESET:
        wlan.init(WLAN.STA)
        # configuration below MUST match your home router settings!!
-       wlan.ifconfig(config=('192.168.178.107', '255.255.255.0', '192.168.178.1', '8.8.8.8'))
+       network.ipconfig(dns='8.8.8.8')
+       wlan.ipconfig(addr4='192.168.0.107/24', gw4='192.168.0.1')
 
    if not wlan.isconnected():
        # change the line below to match your network ssid, security and password

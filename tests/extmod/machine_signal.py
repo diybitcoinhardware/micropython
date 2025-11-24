@@ -1,15 +1,14 @@
 # test machine.Signal class
 
 try:
-    try:
-        import umachine as machine
-    except ImportError:
-        import machine
+    import machine
+
     machine.PinBase
     machine.Signal
 except:
     print("SKIP")
     raise SystemExit
+
 
 class Pin(machine.PinBase):
     def __init__(self):

@@ -48,7 +48,7 @@
 #define AT_LX (FL_LOWER | FL_ALPHA | FL_PRINT | FL_XDIGIT)
 
 // table of attributes for ascii characters
-STATIC const uint8_t attr[] = {
+static const uint8_t attr[] = {
     0, 0, 0, 0, 0, 0, 0, 0,
     0, AT_SP, AT_SP, AT_SP, AT_SP, AT_SP, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
@@ -71,7 +71,9 @@ STATIC const uint8_t attr[] = {
 
 unichar utf8_get_char(const byte *s) {
     unichar ord = *s++;
-    if (!UTF8_IS_NONASCII(ord)) return ord;
+    if (!UTF8_IS_NONASCII(ord)) {
+        return ord;
+    }
     ord &= 0x7F;
     for (unichar mask = 0x40; ord & mask; mask >>= 1) {
         ord &= ~mask;
@@ -138,6 +140,10 @@ bool unichar_isxdigit(unichar c) {
 
 bool unichar_isident(unichar c) {
     return c < 128 && ((attr[c] & (FL_ALPHA | FL_DIGIT)) != 0 || c == '_');
+}
+
+bool unichar_isalnum(unichar c) {
+    return c < 128 && ((attr[c] & (FL_ALPHA | FL_DIGIT)) != 0);
 }
 
 bool unichar_isupper(unichar c) {

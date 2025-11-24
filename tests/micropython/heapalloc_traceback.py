@@ -2,8 +2,9 @@
 
 import micropython
 import sys
+
 try:
-    import uio
+    import io
 except ImportError:
     print("SKIP")
     raise SystemExit
@@ -15,6 +16,7 @@ try:
 except:
     pass
 
+
 def test():
     micropython.heap_lock()
     global global_exc
@@ -22,14 +24,15 @@ def test():
     try:
         raise global_exc
     except StopIteration:
-        print('StopIteration')
+        print("StopIteration")
     micropython.heap_unlock()
+
 
 # call test() with heap allocation disabled
 test()
 
 # print the exception that was raised
-buf = uio.StringIO()
+buf = io.StringIO()
 sys.print_exception(global_exc, buf)
 for l in buf.getvalue().split("\n"):
     # uPy on pyboard prints <stdin> as file, so remove filename.

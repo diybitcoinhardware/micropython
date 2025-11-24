@@ -24,6 +24,8 @@
  * THE SOFTWARE.
  */
 
+#include "py/mphal.h"
+#include "rtc.h"
 #include "rng.h"
 
 #if MICROPY_HW_ENABLE_RNG
@@ -55,7 +57,7 @@ uint32_t rng_get(void) {
 }
 
 // Return a 30-bit hardware generated random number.
-STATIC mp_obj_t pyb_rng_get(void) {
+static mp_obj_t pyb_rng_get(void) {
     return mp_obj_new_int(rng_get() >> 2);
 }
 MP_DEFINE_CONST_FUN_OBJ_0(pyb_rng_get_obj, pyb_rng_get);
@@ -63,15 +65,25 @@ MP_DEFINE_CONST_FUN_OBJ_0(pyb_rng_get_obj, pyb_rng_get);
 #else // MICROPY_HW_ENABLE_RNG
 
 // For MCUs that don't have an RNG we still need to provide a rng_get() function,
-// eg for lwIP.  A pseudo-RNG is not really ideal but we go with it for now.  We
-// don't want to use urandom's pRNG because then the user won't see a reproducible
+// eg for lwIP and random.seed().  A pseudo-RNG is not really ideal but we go with
+// it for now, seeding with numbers which will be somewhat different each time.  We
+// don't want to use random's pRNG because then the user won't see a reproducible
 // random stream.
 
 // Yasmarang random number generator by Ilya Levin
 // http://www.literatecode.com/yasmarang
-STATIC uint32_t pyb_rng_yasmarang(void) {
-    static uint32_t pad = 0xeda4baba, n = 69, d = 233;
+static uint32_t pyb_rng_yasmarang(void) {
+    static bool seeded = false;
+    static uint32_t pad = 0, n = 0, d = 0;
     static uint8_t dat = 0;
+
+    if (!seeded) {
+        seeded = true;
+        rtc_init_finalise();
+        pad = *(uint32_t *)MP_HAL_UNIQUE_ID_ADDRESS ^ SysTick->VAL;
+        n = RTC->TR;
+        d = RTC->SSR;
+    }
 
     pad += dat + d * n;
     pad = (pad << 3) + (pad >> 29);

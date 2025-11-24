@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "py/mpconfig.h"
+#include "py/runtime.h"
 
 // wrapper around everything in this file
 #if MICROPY_EMIT_XTENSA || MICROPY_EMIT_INLINE_XTENSA || MICROPY_EMIT_XTENSAWIN
@@ -65,7 +65,7 @@ void asm_xtensa_entry(asm_xtensa_t *as, int num_locals) {
     // jump over the constants
     asm_xtensa_op_j(as, as->num_const * WORD_SIZE + 4 - 4);
     mp_asm_base_get_cur_to_write_bytes(&as->base, 1); // padding/alignment byte
-    as->const_table = (uint32_t*)mp_asm_base_get_cur_to_write_bytes(&as->base, as->num_const * 4);
+    as->const_table = (uint32_t *)mp_asm_base_get_cur_to_write_bytes(&as->base, as->num_const * 4);
 
     // adjust the stack-pointer to store a0, a12, a13, a14, a15 and locals, 16-byte aligned
     as->stack_adjust = (((ASM_XTENSA_NUM_REGS_SAVED + num_locals) * WORD_SIZE) + 15) & ~15;
@@ -105,7 +105,7 @@ void asm_xtensa_entry_win(asm_xtensa_t *as, int num_locals) {
     // jump over the constants
     asm_xtensa_op_j(as, as->num_const * WORD_SIZE + 4 - 4);
     mp_asm_base_get_cur_to_write_bytes(&as->base, 1); // padding/alignment byte
-    as->const_table = (uint32_t*)mp_asm_base_get_cur_to_write_bytes(&as->base, as->num_const * 4);
+    as->const_table = (uint32_t *)mp_asm_base_get_cur_to_write_bytes(&as->base, as->num_const * 4);
 
     as->stack_adjust = 32 + ((((ASM_XTENSA_NUM_REGS_SAVED_WIN + num_locals) * WORD_SIZE) + 15) & ~15);
     asm_xtensa_op_entry(as, ASM_XTENSA_REG_A1, as->stack_adjust);
@@ -117,7 +117,7 @@ void asm_xtensa_exit_win(asm_xtensa_t *as) {
     asm_xtensa_op_retw_n(as);
 }
 
-STATIC uint32_t get_label_dest(asm_xtensa_t *as, uint label) {
+static uint32_t get_label_dest(asm_xtensa_t *as, uint label) {
     assert(label < as->base.max_num_labels);
     return as->base.label_offsets[label];
 }
@@ -173,7 +173,7 @@ void asm_xtensa_setcc_reg_reg_reg(asm_xtensa_t *as, uint cond, uint reg_dest, ui
 
 size_t asm_xtensa_mov_reg_i32(asm_xtensa_t *as, uint reg_dest, uint32_t i32) {
     // load the constant
-    uint32_t const_table_offset = (uint8_t*)as->const_table - as->base.code_base;
+    uint32_t const_table_offset = (uint8_t *)as->const_table - as->base.code_base;
     size_t loc = const_table_offset + as->cur_const * WORD_SIZE;
     asm_xtensa_op_l32r(as, reg_dest, as->base.code_offset, loc);
     // store the constant in the table
@@ -185,7 +185,9 @@ size_t asm_xtensa_mov_reg_i32(asm_xtensa_t *as, uint reg_dest, uint32_t i32) {
 }
 
 void asm_xtensa_mov_reg_i32_optimised(asm_xtensa_t *as, uint reg_dest, uint32_t i32) {
-    if (SIGNED_FIT12(i32)) {
+    if (-32 <= (int)i32 && (int)i32 <= 95) {
+        asm_xtensa_op_movi_n(as, reg_dest, i32);
+    } else if (SIGNED_FIT12(i32)) {
         asm_xtensa_op_movi(as, reg_dest, i32);
     } else {
         asm_xtensa_mov_reg_i32(as, reg_dest, i32);
@@ -232,21 +234,33 @@ void asm_xtensa_mov_reg_pcrel(asm_xtensa_t *as, uint reg_dest, uint label) {
     asm_xtensa_op_add_n(as, reg_dest, reg_dest, ASM_XTENSA_REG_A0);
 }
 
-void asm_xtensa_call_ind(asm_xtensa_t *as, uint idx) {
-    if (idx < 16) {
-        asm_xtensa_op_l32i_n(as, ASM_XTENSA_REG_A0, ASM_XTENSA_REG_FUN_TABLE, idx);
+void asm_xtensa_l32i_optimised(asm_xtensa_t *as, uint reg_dest, uint reg_base, uint word_offset) {
+    if (word_offset < 16) {
+        asm_xtensa_op_l32i_n(as, reg_dest, reg_base, word_offset);
+    } else if (word_offset < 256) {
+        asm_xtensa_op_l32i(as, reg_dest, reg_base, word_offset);
     } else {
-        asm_xtensa_op_l32i(as, ASM_XTENSA_REG_A0, ASM_XTENSA_REG_FUN_TABLE, idx);
+        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("asm overflow"));
     }
+}
+
+void asm_xtensa_s32i_optimised(asm_xtensa_t *as, uint reg_src, uint reg_base, uint word_offset) {
+    if (word_offset < 16) {
+        asm_xtensa_op_s32i_n(as, reg_src, reg_base, word_offset);
+    } else if (word_offset < 256) {
+        asm_xtensa_op_s32i(as, reg_src, reg_base, word_offset);
+    } else {
+        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("asm overflow"));
+    }
+}
+
+void asm_xtensa_call_ind(asm_xtensa_t *as, uint idx) {
+    asm_xtensa_l32i_optimised(as, ASM_XTENSA_REG_A0, ASM_XTENSA_REG_FUN_TABLE, idx);
     asm_xtensa_op_callx0(as, ASM_XTENSA_REG_A0);
 }
 
 void asm_xtensa_call_ind_win(asm_xtensa_t *as, uint idx) {
-    if (idx < 16) {
-        asm_xtensa_op_l32i_n(as, ASM_XTENSA_REG_A8, ASM_XTENSA_REG_FUN_TABLE_WIN, idx);
-    } else {
-        asm_xtensa_op_l32i(as, ASM_XTENSA_REG_A8, ASM_XTENSA_REG_FUN_TABLE_WIN, idx);
-    }
+    asm_xtensa_l32i_optimised(as, ASM_XTENSA_REG_A8, ASM_XTENSA_REG_FUN_TABLE_WIN, idx);
     asm_xtensa_op_callx8(as, ASM_XTENSA_REG_A8);
 }
 

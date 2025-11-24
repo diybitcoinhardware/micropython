@@ -27,14 +27,21 @@
 #include "py/profile.h"
 #include "py/bc0.h"
 #include "py/gc.h"
+#include "py/objfun.h"
 
 #if MICROPY_PY_SYS_SETTRACE
 
+#if !MICROPY_PERSISTENT_CODE_SAVE
+// The settrace feature requires that we maintain additional metadata on the raw
+// code object which is normally only done when writing .mpy files.
+#error "MICROPY_PY_SYS_SETTRACE requires MICROPY_PERSISTENT_CODE_SAVE to be enabled"
+#endif
+
 #define prof_trace_cb MP_STATE_THREAD(prof_trace_callback)
 
-STATIC uint mp_prof_bytecode_lineno(const mp_raw_code_t *rc, size_t bc) {
+uint mp_prof_bytecode_lineno(const mp_raw_code_t *rc, size_t bc) {
     const mp_bytecode_prelude_t *prelude = &rc->prelude;
-    return mp_bytecode_get_source_line(prelude->line_info, bc);
+    return mp_bytecode_get_source_line(prelude->line_info, prelude->line_info_top, bc);
 }
 
 void mp_prof_extract_prelude(const byte *bytecode, mp_bytecode_prelude_t *prelude) {
@@ -50,152 +57,20 @@ void mp_prof_extract_prelude(const byte *bytecode, mp_bytecode_prelude_t *prelud
 
     MP_BC_PRELUDE_SIZE_DECODE(ip);
 
-    prelude->line_info = ip + 4;
+    prelude->line_info_top = ip + n_info;
     prelude->opcodes = ip + n_info + n_cell;
 
-    qstr block_name = ip[0] | (ip[1] << 8);
-    qstr source_file = ip[2] | (ip[3] << 8);
-    prelude->qstr_block_name = block_name;
-    prelude->qstr_source_file = source_file;
-}
-
-/******************************************************************************/
-// code object
-
-STATIC void code_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kind_t kind) {
-    (void)kind;
-    mp_obj_code_t *o = MP_OBJ_TO_PTR(o_in);
-    const mp_raw_code_t *rc = o->rc;
-    const mp_bytecode_prelude_t *prelude = &rc->prelude;
-    mp_printf(print,
-        "<code object %q at 0x%p, file \"%q\", line %d>",
-        prelude->qstr_block_name,
-        o,
-        prelude->qstr_source_file,
-        rc->line_of_definition
-    );
-}
-
-STATIC mp_obj_tuple_t* code_consts(const mp_raw_code_t *rc) {
-    const mp_bytecode_prelude_t *prelude = &rc->prelude;
-    int start = prelude->n_pos_args + prelude->n_kwonly_args + rc->n_obj;
-    int stop  = prelude->n_pos_args + prelude->n_kwonly_args + rc->n_obj + rc->n_raw_code;
-    mp_obj_tuple_t *consts = MP_OBJ_TO_PTR(mp_obj_new_tuple(stop - start + 1, NULL));
-
-    size_t const_no = 0;
-    for (int i = start; i < stop; ++i) {
-        mp_obj_t code = mp_obj_new_code((const mp_raw_code_t*)MP_OBJ_TO_PTR(rc->const_table[i]));
-        if (code == MP_OBJ_NULL) {
-            m_malloc_fail(sizeof(mp_obj_code_t));
-        }
-        consts->items[const_no++] = code;
+    prelude->qstr_block_name_idx = mp_decode_uint_value(ip);
+    for (size_t i = 0; i < 1 + n_pos_args + n_kwonly_args; ++i) {
+        ip = mp_decode_uint_skip(ip);
     }
-    consts->items[const_no++] = mp_const_none;
-
-    return consts;
-}
-
-STATIC mp_obj_t raw_code_lnotab(const mp_raw_code_t *rc) {
-    // const mp_bytecode_prelude_t *prelude = &rc->prelude;
-    uint start = 0;
-    uint stop = rc->fun_data_len - start;
-
-    uint last_lineno = mp_prof_bytecode_lineno(rc, start);
-    uint lasti = 0;
-
-    const uint buffer_chunk_size = (stop-start) >> 2; // heuristic magic
-    uint buffer_size = buffer_chunk_size;
-    byte *buffer = m_new(byte, buffer_size);
-    uint buffer_index = 0;
-
-    for (uint i = start; i < stop; ++i) {
-        uint lineno = mp_prof_bytecode_lineno(rc, i);
-        size_t line_diff = lineno - last_lineno;
-        if (line_diff > 0) {
-            uint instr_diff = (i - start) - lasti;
-
-            assert(instr_diff < 256);
-            assert(line_diff < 256);
-
-            if (buffer_index + 2 > buffer_size) {
-                buffer = m_renew(byte, buffer, buffer_size, buffer_size + buffer_chunk_size);
-                buffer_size = buffer_size + buffer_chunk_size;
-            }
-            last_lineno = lineno;
-            lasti = i - start;
-            buffer[buffer_index++] = instr_diff;
-            buffer[buffer_index++] = line_diff;
-        }
-    }
-
-    mp_obj_t o = mp_obj_new_bytes(buffer, buffer_index);
-    m_del(byte, buffer, buffer_size);
-    return o;
-}
-
-STATIC void code_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
-    if (dest[0] != MP_OBJ_NULL) {
-        // not load attribute
-        return;
-    }
-    mp_obj_code_t *o = MP_OBJ_TO_PTR(self_in);
-    const mp_raw_code_t *rc = o->rc;
-    const mp_bytecode_prelude_t *prelude = &rc->prelude;
-    switch(attr) {
-        case MP_QSTR_co_code:
-            dest[0] = mp_obj_new_bytes(
-                (void*)prelude->opcodes,
-                rc->fun_data_len - (prelude->opcodes - (const byte*)rc->fun_data)
-            );
-            break;
-        case MP_QSTR_co_consts:
-            dest[0] = MP_OBJ_FROM_PTR(code_consts(rc));
-            break;
-        case MP_QSTR_co_filename:
-            dest[0] = MP_OBJ_NEW_QSTR(prelude->qstr_source_file);
-            break;
-        case MP_QSTR_co_firstlineno:
-            dest[0] = MP_OBJ_NEW_SMALL_INT(mp_prof_bytecode_lineno(rc, 0));
-            break;
-        case MP_QSTR_co_name:
-            dest[0] = MP_OBJ_NEW_QSTR(prelude->qstr_block_name);
-            break;
-        case MP_QSTR_co_names:
-            dest[0] = MP_OBJ_FROM_PTR(o->dict_locals);
-            break;
-        case MP_QSTR_co_lnotab:
-            if (!o->lnotab) {
-                 o->lnotab = raw_code_lnotab(rc);
-            }
-            dest[0] = o->lnotab;
-            break;
-    }
-}
-
-const mp_obj_type_t mp_type_code = {
-    { &mp_type_type },
-    .name = MP_QSTR_code,
-    .print = code_print,
-    .unary_op = mp_generic_unary_op,
-    .attr = code_attr,
-};
-
-mp_obj_t mp_obj_new_code(const mp_raw_code_t *rc) {
-    mp_obj_code_t *o = m_new_obj_maybe(mp_obj_code_t);
-    if (o == NULL) {
-        return MP_OBJ_NULL;
-    }
-    o->base.type = &mp_type_code;
-    o->rc = rc;
-    o->dict_locals = mp_locals_get(); // this is a wrong! how to do this properly?
-    o->lnotab = MP_OBJ_NULL;
-    return MP_OBJ_FROM_PTR(o);
+    prelude->line_info = ip;
 }
 
 /******************************************************************************/
 // frame object
 
-STATIC void frame_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kind_t kind) {
+static void frame_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kind_t kind) {
     (void)kind;
     mp_obj_frame_t *frame = MP_OBJ_TO_PTR(o_in);
     mp_obj_code_t *code = frame->code;
@@ -204,13 +79,13 @@ STATIC void frame_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kind_t 
     mp_printf(print,
         "<frame at 0x%p, file '%q', line %d, code %q>",
         frame,
-        prelude->qstr_source_file,
+        MP_CODE_QSTR_MAP(code->context, 0),
         frame->lineno,
-        prelude->qstr_block_name
-    );
+        MP_CODE_QSTR_MAP(code->context, prelude->qstr_block_name_idx)
+        );
 }
 
-STATIC void frame_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
+static void frame_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
     if (dest[0] != MP_OBJ_NULL) {
         // not load attribute
         return;
@@ -218,7 +93,7 @@ STATIC void frame_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
 
     mp_obj_frame_t *o = MP_OBJ_TO_PTR(self_in);
 
-    switch(attr) {
+    switch (attr) {
         case MP_QSTR_f_back:
             dest[0] = mp_const_none;
             if (o->code_state->prev_state) {
@@ -229,7 +104,7 @@ STATIC void frame_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
             dest[0] = MP_OBJ_FROM_PTR(o->code);
             break;
         case MP_QSTR_f_globals:
-            dest[0] = MP_OBJ_FROM_PTR(o->code_state->fun_bc->globals);
+            dest[0] = MP_OBJ_FROM_PTR(o->code_state->fun_bc->context->module.globals);
             break;
         case MP_QSTR_f_lasti:
             dest[0] = MP_OBJ_NEW_SMALL_INT(o->lasti);
@@ -240,13 +115,13 @@ STATIC void frame_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
     }
 }
 
-const mp_obj_type_t mp_type_frame = {
-    { &mp_type_type },
-    .name = MP_QSTR_frame,
-    .print = frame_print,
-    .unary_op = mp_generic_unary_op,
-    .attr = frame_attr,
-};
+MP_DEFINE_CONST_OBJ_TYPE(
+    mp_type_frame,
+    MP_QSTR_frame,
+    MP_TYPE_FLAG_NONE,
+    print, frame_print,
+    attr, frame_attr
+    );
 
 mp_obj_t mp_obj_new_frame(const mp_code_state_t *code_state) {
     if (gc_is_locked()) {
@@ -258,7 +133,7 @@ mp_obj_t mp_obj_new_frame(const mp_code_state_t *code_state) {
         return MP_OBJ_NULL;
     }
 
-    mp_obj_code_t *code = o->code = MP_OBJ_TO_PTR(mp_obj_new_code(code_state->fun_bc->rc));
+    mp_obj_code_t *code = o->code = MP_OBJ_TO_PTR(mp_obj_new_code(code_state->fun_bc->context, code_state->fun_bc->rc, false));
     if (code == NULL) {
         return MP_OBJ_NULL;
     }
@@ -282,12 +157,12 @@ mp_obj_t mp_obj_new_frame(const mp_code_state_t *code_state) {
 // Trace logic
 
 typedef struct {
-    struct _mp_obj_frame_t * frame;
+    struct _mp_obj_frame_t *frame;
     mp_obj_t event;
     mp_obj_t arg;
 } prof_callback_args_t;
 
-STATIC mp_obj_t mp_prof_callback_invoke(mp_obj_t callback, prof_callback_args_t *args) {
+static mp_obj_t mp_prof_callback_invoke(mp_obj_t callback, prof_callback_args_t *args) {
     assert(mp_obj_is_callable(callback));
 
     mp_prof_is_executing = true;
@@ -297,10 +172,8 @@ STATIC mp_obj_t mp_prof_callback_invoke(mp_obj_t callback, prof_callback_args_t 
 
     mp_prof_is_executing = false;
 
-    if (MP_STATE_VM(mp_pending_exception) != MP_OBJ_NULL) {
-        mp_obj_t obj = MP_STATE_VM(mp_pending_exception);
-        MP_STATE_VM(mp_pending_exception) = MP_OBJ_NULL;
-        nlr_raise(obj);
+    if (MP_STATE_THREAD(mp_pending_exception) != MP_OBJ_NULL) {
+        mp_handle_pending(true);
     }
     return top;
 }
@@ -340,7 +213,7 @@ mp_obj_t mp_prof_frame_enter(mp_code_state_t *code_state) {
     }
 
     mp_obj_t top;
-    prof_callback_args_t _args, *args=&_args;
+    prof_callback_args_t _args, *args = &_args;
     args->frame = code_state->frame;
 
     // SETTRACE event CALL
@@ -388,7 +261,7 @@ mp_obj_t mp_prof_instr_tick(mp_code_state_t *code_state, bool is_exception) {
     mp_obj_t top = mp_const_none;
     mp_obj_t callback = code_state->frame->callback;
 
-    prof_callback_args_t _args, *args=&_args;
+    prof_callback_args_t _args, *args = &_args;
     args->frame = code_state->frame;
     args->event = mp_const_none;
     args->arg = mp_const_none;
@@ -444,10 +317,10 @@ mp_obj_t mp_prof_instr_tick(mp_code_state_t *code_state, bool is_exception) {
 #include "runtime0.h"
 
 #define DECODE_UINT { \
-    unum = 0; \
-    do { \
-        unum = (unum << 7) + (*ip & 0x7f); \
-    } while ((*ip++ & 0x80) != 0); \
+        unum = 0; \
+        do { \
+            unum = (unum << 7) + (*ip & 0x7f); \
+        } while ((*ip++ & 0x80) != 0); \
 }
 #define DECODE_ULABEL do { unum = (ip[0] | (ip[1] << 8)); ip += 2; } while (0)
 #define DECODE_SLABEL do { unum = (ip[0] | (ip[1] << 8)) - 0x8000; ip += 2; } while (0)
@@ -457,7 +330,7 @@ mp_obj_t mp_prof_instr_tick(mp_code_state_t *code_state, bool is_exception) {
     ip += 2;
 #define DECODE_PTR \
     DECODE_UINT; \
-    ptr = (const byte*)const_table[unum]
+    ptr = (const byte *)const_table[unum]
 #define DECODE_OBJ \
     DECODE_UINT; \
     obj = (mp_obj_t)const_table[unum]
@@ -469,15 +342,15 @@ typedef struct _mp_dis_instruction_t {
     mp_obj_t argobjex_cache;
 } mp_dis_instruction_t;
 
-STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_table, mp_dis_instruction_t *instruction) {
+static const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_table, mp_dis_instruction_t *instruction) {
     mp_uint_t unum;
-    const byte* ptr;
+    const byte *ptr;
     mp_obj_t obj;
     qstr qst;
 
     instruction->qstr_opname = MP_QSTR_;
     instruction->arg = 0;
-    instruction->argobj= mp_const_none;
+    instruction->argobj = mp_const_none;
     instruction->argobjex_cache = mp_const_none;
 
     switch (*ip++) {
@@ -511,14 +384,14 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_LOAD_CONST_STRING;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_LOAD_CONST_OBJ:
             DECODE_OBJ;
             instruction->qstr_opname = MP_QSTR_LOAD_CONST_OBJ;
             instruction->arg = unum;
-            instruction->argobj= obj;
+            instruction->argobj = obj;
             break;
 
         case MP_BC_LOAD_NULL:
@@ -541,44 +414,35 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_LOAD_NAME;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
-            if (MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE) {
-                instruction->argobjex_cache = MP_OBJ_NEW_SMALL_INT(*ip++);
-            }
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_LOAD_GLOBAL:
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_LOAD_GLOBAL;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
-            if (MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE) {
-                instruction->argobjex_cache = MP_OBJ_NEW_SMALL_INT(*ip++);
-            }
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_LOAD_ATTR:
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_LOAD_ATTR;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
-            if (MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE) {
-                instruction->argobjex_cache = MP_OBJ_NEW_SMALL_INT(*ip++);
-            }
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_LOAD_METHOD:
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_LOAD_METHOD;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_LOAD_SUPER_METHOD:
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_LOAD_SUPER_METHOD;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_LOAD_BUILD_CLASS:
@@ -605,24 +469,21 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_STORE_NAME;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_STORE_GLOBAL:
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_STORE_GLOBAL;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_STORE_ATTR:
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_STORE_ATTR;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
-            if (MICROPY_OPT_CACHE_MAP_LOOKUP_IN_BYTECODE) {
-                instruction->argobjex_cache = MP_OBJ_NEW_SMALL_INT(*ip++);
-            }
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_STORE_SUBSCR:
@@ -645,14 +506,14 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_DELETE_NAME;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_DELETE_GLOBAL:
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_DELETE_GLOBAL;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_DUP_TOP:
@@ -813,14 +674,14 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
             DECODE_PTR;
             instruction->qstr_opname = MP_QSTR_MAKE_FUNCTION;
             instruction->arg = unum;
-            instruction->argobj= mp_obj_new_int_from_ull((uint64_t)ptr);
+            instruction->argobj = mp_obj_new_int_from_ull((uint64_t)ptr);
             break;
 
         case MP_BC_MAKE_FUNCTION_DEFARGS:
             DECODE_PTR;
             instruction->qstr_opname = MP_QSTR_MAKE_FUNCTION_DEFARGS;
             instruction->arg = unum;
-            instruction->argobj= mp_obj_new_int_from_ull((uint64_t)ptr);
+            instruction->argobj = mp_obj_new_int_from_ull((uint64_t)ptr);
             break;
 
         case MP_BC_MAKE_CLOSURE: {
@@ -828,7 +689,7 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
             mp_uint_t n_closed_over = *ip++;
             instruction->qstr_opname = MP_QSTR_MAKE_CLOSURE;
             instruction->arg = unum;
-            instruction->argobj= mp_obj_new_int_from_ull((uint64_t)ptr);
+            instruction->argobj = mp_obj_new_int_from_ull((uint64_t)ptr);
             instruction->argobjex_cache = MP_OBJ_NEW_SMALL_INT(n_closed_over);
             break;
         }
@@ -838,7 +699,7 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
             mp_uint_t n_closed_over = *ip++;
             instruction->qstr_opname = MP_QSTR_MAKE_CLOSURE_DEFARGS;
             instruction->arg = unum;
-            instruction->argobj= mp_obj_new_int_from_ull((uint64_t)ptr);
+            instruction->argobj = mp_obj_new_int_from_ull((uint64_t)ptr);
             instruction->argobjex_cache = MP_OBJ_NEW_SMALL_INT(n_closed_over);
             break;
         }
@@ -899,14 +760,14 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_IMPORT_NAME;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_IMPORT_FROM:
             DECODE_QSTR;
             instruction->qstr_opname = MP_QSTR_IMPORT_FROM;
             instruction->arg = qst;
-            instruction->argobj= MP_OBJ_NEW_QSTR(qst);
+            instruction->argobj = MP_OBJ_NEW_QSTR(qst);
             break;
 
         case MP_BC_IMPORT_STAR:
@@ -931,7 +792,7 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
                 instruction->qstr_opname = MP_QSTR_BINARY_OP;
                 instruction->arg = op;
             } else {
-                mp_printf(&mp_plat_print, "code %p, opcode 0x%02x not implemented\n", ip-1, ip[-1]);
+                mp_printf(&mp_plat_print, "code %p, opcode 0x%02x not implemented\n", ip - 1, ip[-1]);
                 assert(0);
                 return ip;
             }
@@ -941,7 +802,7 @@ STATIC const byte *mp_prof_opcode_decode(const byte *ip, const mp_uint_t *const_
     return ip;
 }
 
-void mp_prof_print_instr(const byte* ip, mp_code_state_t *code_state) {
+void mp_prof_print_instr(const byte *ip, mp_code_state_t *code_state) {
     mp_dis_instruction_t _instruction, *instruction = &_instruction;
     mp_prof_opcode_decode(ip, code_state->fun_bc->rc->const_table, instruction);
     const mp_raw_code_t *rc = code_state->fun_bc->rc;
@@ -958,7 +819,7 @@ void mp_prof_print_instr(const byte* ip, mp_code_state_t *code_state) {
             prelude->qstr_block_name,
             offset,
             mp_prof_bytecode_lineno(rc, offset)
-        );
+            );
     }
 
     /* bytecode */ if (0) {

@@ -24,25 +24,21 @@
  * THE SOFTWARE.
  */
 
-#include <string.h>
-#include <stdio.h>
-
 #include "py/obj.h"
+#include "boardctrl.h"
 #include "gccollect.h"
 #include "irq.h"
 #include "pybthread.h"
 
 #if MICROPY_PY_THREAD
 
-#define PYB_MUTEX_UNLOCKED ((void*)0)
-#define PYB_MUTEX_LOCKED ((void*)1)
+#define PYB_MUTEX_UNLOCKED ((void *)0)
+#define PYB_MUTEX_LOCKED ((void *)1)
 
 // These macros are used when we only need to protect against a thread
 // switch; other interrupts are still allowed to proceed.
 #define RAISE_IRQ_PRI() raise_irq_pri(IRQ_PRI_PENDSV)
 #define RESTORE_IRQ_PRI(state) restore_irq_pri(state)
-
-extern void __fatal_error(const char*);
 
 volatile int pyb_thread_enabled;
 pyb_thread_t *volatile pyb_thread_all;
@@ -57,7 +53,7 @@ static inline void pyb_thread_add_to_runable(pyb_thread_t *thread) {
 
 static inline void pyb_thread_remove_from_runable(pyb_thread_t *thread) {
     if (thread->run_next == thread) {
-        __fatal_error("deadlock");
+        MICROPY_BOARD_FATAL_ERROR("deadlock");
     }
     thread->run_prev->run_next = thread->run_next;
     thread->run_next->run_prev = thread->run_prev;
@@ -88,13 +84,13 @@ void pyb_thread_deinit() {
     enable_irq(irq_state);
 }
 
-STATIC void pyb_thread_terminate(void) {
+static void pyb_thread_terminate(void) {
     uint32_t irq_state = disable_irq();
     pyb_thread_t *thread = pyb_thread_cur;
     // take current thread off the run list
     pyb_thread_remove_from_runable(thread);
     // take current thread off the list of all threads
-    for (pyb_thread_t **n = (pyb_thread_t**)&pyb_thread_all;; n = &(*n)->all_next) {
+    for (pyb_thread_t **n = (pyb_thread_t **)&pyb_thread_all;; n = &(*n)->all_next) {
         if (*n == thread) {
             *n = thread->all_next;
             break;
@@ -112,11 +108,11 @@ STATIC void pyb_thread_terminate(void) {
     SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
     enable_irq(irq_state);
     // should not return
-    __fatal_error("could not terminate");
+    MICROPY_BOARD_FATAL_ERROR("could not terminate");
 }
 
 uint32_t pyb_thread_new(pyb_thread_t *thread, void *stack, size_t stack_len, void *entry, void *arg) {
-    uint32_t *stack_top = (uint32_t*)stack + stack_len; // stack is full descending
+    uint32_t *stack_top = (uint32_t *)stack + stack_len; // stack is full descending
     *--stack_top = 0x01000000; // xPSR (thumb bit set)
     *--stack_top = (uint32_t)entry & 0xfffffffe; // pc (must have bit 0 cleared, even for thumb code)
     *--stack_top = (uint32_t)pyb_thread_terminate; // lr
@@ -143,11 +139,11 @@ uint32_t pyb_thread_new(pyb_thread_t *thread, void *stack, size_t stack_len, voi
     return (uint32_t)thread; // success
 }
 
-void pyb_thread_dump(void) {
+void pyb_thread_dump(const mp_print_t *print) {
     if (!pyb_thread_enabled) {
-        printf("THREAD: only main thread\n");
+        mp_printf(print, "THREAD: only main thread\n");
     } else {
-        printf("THREAD:\n");
+        mp_printf(print, "THREAD:\n");
         for (pyb_thread_t *th = pyb_thread_all; th != NULL; th = th->all_next) {
             bool runable = false;
             for (pyb_thread_t *th2 = pyb_thread_cur;; th2 = th2->run_next) {
@@ -159,11 +155,11 @@ void pyb_thread_dump(void) {
                     break;
                 }
             }
-            printf("    id=%p sp=%p sz=%u", th, th->stack, th->stack_len);
+            mp_printf(print, "    id=%p sp=%p sz=%u", th, th->stack, th->stack_len);
             if (runable) {
-                printf(" (runable)");
+                mp_printf(print, " (runable)");
             }
-            printf("\n");
+            mp_printf(print, "\n");
         }
     }
 }

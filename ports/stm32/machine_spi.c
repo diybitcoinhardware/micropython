@@ -25,30 +25,34 @@
  */
 
 #include "py/runtime.h"
-#include "extmod/machine_spi.h"
+#include "extmod/modmachine.h"
 #include "spi.h"
+
+#if MICROPY_PY_MACHINE_SPI
 
 /******************************************************************************/
 // Implementation of hard SPI for machine module
 
-STATIC const machine_hard_spi_obj_t machine_hard_spi_obj[] = {
-    {{&machine_hard_spi_type}, &spi_obj[0]},
-    {{&machine_hard_spi_type}, &spi_obj[1]},
-    {{&machine_hard_spi_type}, &spi_obj[2]},
-    {{&machine_hard_spi_type}, &spi_obj[3]},
-    {{&machine_hard_spi_type}, &spi_obj[4]},
-    {{&machine_hard_spi_type}, &spi_obj[5]},
+static const machine_hard_spi_obj_t machine_hard_spi_obj[] = {
+    {{&machine_spi_type}, &spi_obj[0]},
+    {{&machine_spi_type}, &spi_obj[1]},
+    {{&machine_spi_type}, &spi_obj[2]},
+    {{&machine_spi_type}, &spi_obj[3]},
+    {{&machine_spi_type}, &spi_obj[4]},
+    {{&machine_spi_type}, &spi_obj[5]},
 };
 
-STATIC void machine_hard_spi_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
+static void machine_hard_spi_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
     machine_hard_spi_obj_t *self = MP_OBJ_TO_PTR(self_in);
     spi_print(print, self->spi, false);
 }
 
 mp_obj_t machine_hard_spi_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
+    MP_MACHINE_SPI_CHECK_FOR_LEGACY_SOFTSPI_CONSTRUCTION(n_args, n_kw, all_args);
+
     enum { ARG_id, ARG_baudrate, ARG_polarity, ARG_phase, ARG_bits, ARG_firstbit, ARG_sck, ARG_mosi, ARG_miso };
     static const mp_arg_t allowed_args[] = {
-        { MP_QSTR_id,       MP_ARG_OBJ, {.u_obj = MP_OBJ_NEW_SMALL_INT(-1)} },
+        { MP_QSTR_id,       MP_ARG_REQUIRED | MP_ARG_OBJ },
         { MP_QSTR_baudrate, MP_ARG_INT, {.u_int = 500000} },
         { MP_QSTR_polarity, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0} },
         { MP_QSTR_phase,    MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 0} },
@@ -69,7 +73,7 @@ mp_obj_t machine_hard_spi_make_new(const mp_obj_type_t *type, size_t n_args, siz
     if (args[ARG_sck].u_obj != MP_OBJ_NULL
         || args[ARG_mosi].u_obj != MP_OBJ_NULL
         || args[ARG_miso].u_obj != MP_OBJ_NULL) {
-        mp_raise_ValueError("explicit choice of sck/mosi/miso is not implemented");
+        mp_raise_ValueError(MP_ERROR_TEXT("explicit choice of sck/mosi/miso is not implemented"));
     }
 
     // set the SPI configuration values
@@ -83,19 +87,22 @@ mp_obj_t machine_hard_spi_make_new(const mp_obj_type_t *type, size_t n_args, siz
     init->CRCCalculation = SPI_CRCCALCULATION_DISABLE;
     init->CRCPolynomial = 0;
 
-    // set configurable paramaters
+    // set configurable parameters
     spi_set_params(self->spi, 0xffffffff, args[ARG_baudrate].u_int,
         args[ARG_polarity].u_int, args[ARG_phase].u_int, args[ARG_bits].u_int,
         args[ARG_firstbit].u_int);
 
     // init the SPI bus
-    spi_init(self->spi, false);
+    int ret = spi_init(self->spi, false);
+    if (ret != 0) {
+        mp_raise_OSError(-ret);
+    }
 
     return MP_OBJ_FROM_PTR(self);
 }
 
-STATIC void machine_hard_spi_init(mp_obj_base_t *self_in, size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
-    machine_hard_spi_obj_t *self = (machine_hard_spi_obj_t*)self_in;
+static void machine_hard_spi_init(mp_obj_base_t *self_in, size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    machine_hard_spi_obj_t *self = (machine_hard_spi_obj_t *)self_in;
 
     enum { ARG_baudrate, ARG_polarity, ARG_phase, ARG_bits, ARG_firstbit };
     static const mp_arg_t allowed_args[] = {
@@ -114,30 +121,36 @@ STATIC void machine_hard_spi_init(mp_obj_base_t *self_in, size_t n_args, const m
         args[ARG_firstbit].u_int);
 
     // re-init the SPI bus
-    spi_init(self->spi, false);
+    int ret = spi_init(self->spi, false);
+    if (ret != 0) {
+        mp_raise_OSError(-ret);
+    }
 }
 
-STATIC void machine_hard_spi_deinit(mp_obj_base_t *self_in) {
-    machine_hard_spi_obj_t *self = (machine_hard_spi_obj_t*)self_in;
+static void machine_hard_spi_deinit(mp_obj_base_t *self_in) {
+    machine_hard_spi_obj_t *self = (machine_hard_spi_obj_t *)self_in;
     spi_deinit(self->spi);
 }
 
-STATIC void machine_hard_spi_transfer(mp_obj_base_t *self_in, size_t len, const uint8_t *src, uint8_t *dest) {
-    machine_hard_spi_obj_t *self = (machine_hard_spi_obj_t*)self_in;
+static void machine_hard_spi_transfer(mp_obj_base_t *self_in, size_t len, const uint8_t *src, uint8_t *dest) {
+    machine_hard_spi_obj_t *self = (machine_hard_spi_obj_t *)self_in;
     spi_transfer(self->spi, len, src, dest, SPI_TRANSFER_TIMEOUT(len));
 }
 
-STATIC const mp_machine_spi_p_t machine_hard_spi_p = {
+static const mp_machine_spi_p_t machine_hard_spi_p = {
     .init = machine_hard_spi_init,
     .deinit = machine_hard_spi_deinit,
     .transfer = machine_hard_spi_transfer,
 };
 
-const mp_obj_type_t machine_hard_spi_type = {
-    { &mp_type_type },
-    .name = MP_QSTR_SPI,
-    .print = machine_hard_spi_print,
-    .make_new = mp_machine_spi_make_new, // delegate to master constructor
-    .protocol = &machine_hard_spi_p,
-    .locals_dict = (mp_obj_dict_t*)&mp_machine_spi_locals_dict,
-};
+MP_DEFINE_CONST_OBJ_TYPE(
+    machine_spi_type,
+    MP_QSTR_SPI,
+    MP_TYPE_FLAG_NONE,
+    make_new, machine_hard_spi_make_new,
+    print, machine_hard_spi_print,
+    protocol, &machine_hard_spi_p,
+    locals_dict, &mp_machine_spi_locals_dict
+    );
+
+#endif // MICROPY_PY_MACHINE_SPI

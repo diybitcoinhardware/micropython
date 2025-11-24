@@ -20,16 +20,17 @@ Direct wiring on SD card (SPI):
   ---------------------------------
 """
 
-import os
+import os, vfs
 from machine import SPI, Pin
 from sdcard import SDCard
+
 
 def mnt():
     cs = Pin("P22", mode=Pin.OUT)
     sd = SDCard(SPI(0), cs)
-    os.mount(sd, '/')
+    vfs.mount(sd, "/")
+
 
 def list():
     files = os.listdir()
     print(files)
-

@@ -75,12 +75,13 @@ def color565(r, g=0, b=0):
         r, g, b = r  # see if the first var is a tuple/list
     except TypeError:
         pass
-    return (r & 0xf8) << 8 | (g & 0xfc) << 3 | b >> 3
+    return (r & 0xF8) << 8 | (g & 0xFC) << 3 | b >> 3
 
 
 class ST77xx:
-    def __init__(self, spi, width, height, reset, dc, cs=None, backlight=None,
-                 xstart=-1, ystart=-1):
+    def __init__(
+        self, spi, width, height, reset, dc, cs=None, backlight=None, xstart=-1, ystart=-1
+    ):
         """
         display = st7789.ST7789(
             SPI(1, baudrate=40000000, phase=0, polarity=1),
@@ -95,6 +96,7 @@ class ST77xx:
         self.spi = spi
         if spi is None:
             import machine
+
             self.spi = machine.SPI(1, baudrate=40000000, phase=0, polarity=1)
         self.reset = reset
         self.dc = dc
@@ -205,7 +207,7 @@ class ST77xx:
         self.write(ST7789_MADCTL, bytes([value]))
 
     def _encode_pos(self, x, y):
-        """Encode a postion into bytes."""
+        """Encode a position into bytes."""
         return struct.pack(_ENCODE_POS, x, y)
 
     def _encode_pixel(self, color):

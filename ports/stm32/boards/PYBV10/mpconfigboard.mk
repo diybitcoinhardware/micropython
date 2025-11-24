@@ -14,3 +14,6 @@ endif
 
 # MicroPython settings
 MICROPY_VFS_LFS2 = 1
+
+# PYB-specific frozen modules
+FROZEN_MANIFEST ?= $(BOARD_DIR)/manifest.py

@@ -24,14 +24,14 @@
  * THE SOFTWARE.
  */
 
-#include <stdio.h>
 #include <string.h>
-
 #include "py/runtime.h"
+#include "py/mperrno.h"
 #include "py/mphal.h"
 #include "spi.h"
+#include "extmod/modmachine.h"
 
-// Possible DMA configurations for SPI busses:
+// Possible DMA configurations for SPI buses:
 // SPI1_TX: DMA2_Stream3.CHANNEL_3 or DMA2_Stream5.CHANNEL_3
 // SPI1_RX: DMA2_Stream0.CHANNEL_3 or DMA2_Stream2.CHANNEL_3
 // SPI2_TX: DMA1_Stream4.CHANNEL_0
@@ -46,22 +46,25 @@
 // SPI6_RX: DMA2_Stream6.CHANNEL_1
 
 #if defined(MICROPY_HW_SPI1_SCK)
-SPI_HandleTypeDef SPIHandle1 = {.Instance = NULL};
+static SPI_HandleTypeDef SPIHandle1 = {.Instance = NULL};
 #endif
 #if defined(MICROPY_HW_SPI2_SCK)
-SPI_HandleTypeDef SPIHandle2 = {.Instance = NULL};
+static SPI_HandleTypeDef SPIHandle2 = {.Instance = NULL};
 #endif
 #if defined(MICROPY_HW_SPI3_SCK)
-SPI_HandleTypeDef SPIHandle3 = {.Instance = NULL};
+static SPI_HandleTypeDef SPIHandle3 = {.Instance = NULL};
 #endif
 #if defined(MICROPY_HW_SPI4_SCK)
-SPI_HandleTypeDef SPIHandle4 = {.Instance = NULL};
+static SPI_HandleTypeDef SPIHandle4 = {.Instance = NULL};
 #endif
 #if defined(MICROPY_HW_SPI5_SCK)
-SPI_HandleTypeDef SPIHandle5 = {.Instance = NULL};
+static SPI_HandleTypeDef SPIHandle5 = {.Instance = NULL};
 #endif
 #if defined(MICROPY_HW_SPI6_SCK)
-SPI_HandleTypeDef SPIHandle6 = {.Instance = NULL};
+static SPI_HandleTypeDef SPIHandle6 = {.Instance = NULL};
+#endif
+#if defined(MICROPY_HW_SUBGHZSPI_ID)
+static SPI_HandleTypeDef SPIHandleSubGhz = {.Instance = NULL};
 #endif
 
 const spi_t spi_obj[6] = {
@@ -77,6 +80,8 @@ const spi_t spi_obj[6] = {
     #endif
     #if defined(MICROPY_HW_SPI3_SCK)
     {&SPIHandle3, &dma_SPI_3_TX, &dma_SPI_3_RX},
+    #elif MICROPY_HW_SUBGHZSPI_ID == 3
+    {&SPIHandleSubGhz, &dma_SPI_SUBGHZ_TX, &dma_SPI_SUBGHZ_RX},
     #else
     {NULL, NULL, NULL},
     #endif
@@ -97,25 +102,53 @@ const spi_t spi_obj[6] = {
     #endif
 };
 
-#if defined(STM32H7)
-// STM32H7 HAL requires SPI IRQs to be enabled and handled.
+#if defined(MICROPY_HW_SUBGHZSPI_ID) && MICROPY_HW_SUBGHZSPI_ID != 3
+#error "spi_obj needs updating for new value of MICROPY_HW_SUBGHZSPI_ID"
+#endif
+
+#if defined(STM32H5) || defined(STM32H7)
+// STM32H5/H7 HAL requires SPI IRQs to be enabled and handled.
 #if defined(MICROPY_HW_SPI1_SCK)
-void SPI1_IRQHandler(void) { IRQ_ENTER(SPI1_IRQn); HAL_SPI_IRQHandler(&SPIHandle1); IRQ_EXIT(SPI1_IRQn); }
+void SPI1_IRQHandler(void) {
+    IRQ_ENTER(SPI1_IRQn);
+    HAL_SPI_IRQHandler(&SPIHandle1);
+    IRQ_EXIT(SPI1_IRQn);
+}
 #endif
 #if defined(MICROPY_HW_SPI2_SCK)
-void SPI2_IRQHandler(void) { IRQ_ENTER(SPI2_IRQn); HAL_SPI_IRQHandler(&SPIHandle2); IRQ_EXIT(SPI2_IRQn); }
+void SPI2_IRQHandler(void) {
+    IRQ_ENTER(SPI2_IRQn);
+    HAL_SPI_IRQHandler(&SPIHandle2);
+    IRQ_EXIT(SPI2_IRQn);
+}
 #endif
 #if defined(MICROPY_HW_SPI3_SCK)
-void SPI3_IRQHandler(void) { IRQ_ENTER(SPI3_IRQn); HAL_SPI_IRQHandler(&SPIHandle3); IRQ_EXIT(SPI3_IRQn); }
+void SPI3_IRQHandler(void) {
+    IRQ_ENTER(SPI3_IRQn);
+    HAL_SPI_IRQHandler(&SPIHandle3);
+    IRQ_EXIT(SPI3_IRQn);
+}
 #endif
 #if defined(MICROPY_HW_SPI4_SCK)
-void SPI4_IRQHandler(void) { IRQ_ENTER(SPI4_IRQn); HAL_SPI_IRQHandler(&SPIHandle4); IRQ_EXIT(SPI4_IRQn); }
+void SPI4_IRQHandler(void) {
+    IRQ_ENTER(SPI4_IRQn);
+    HAL_SPI_IRQHandler(&SPIHandle4);
+    IRQ_EXIT(SPI4_IRQn);
+}
 #endif
 #if defined(MICROPY_HW_SPI5_SCK)
-void SPI5_IRQHandler(void) { IRQ_ENTER(SPI5_IRQn); HAL_SPI_IRQHandler(&SPIHandle5); IRQ_EXIT(SPI5_IRQn); }
+void SPI5_IRQHandler(void) {
+    IRQ_ENTER(SPI5_IRQn);
+    HAL_SPI_IRQHandler(&SPIHandle5);
+    IRQ_EXIT(SPI5_IRQn);
+}
 #endif
 #if defined(MICROPY_HW_SPI6_SCK)
-void SPI6_IRQHandler(void) { IRQ_ENTER(SPI6_IRQn); HAL_SPI_IRQHandler(&SPIHandle6); IRQ_EXIT(SPI6_IRQn); }
+void SPI6_IRQHandler(void) {
+    IRQ_ENTER(SPI6_IRQn);
+    HAL_SPI_IRQHandler(&SPIHandle6);
+    IRQ_EXIT(SPI6_IRQn);
+}
 #endif
 #endif
 
@@ -140,55 +173,81 @@ void spi_init0(void) {
     #if defined(MICROPY_HW_SPI6_SCK)
     SPIHandle6.Instance = SPI6;
     #endif
+    #if defined(MICROPY_HW_SUBGHZSPI_ID)
+    SPIHandleSubGhz.Instance = SUBGHZSPI;
+    #endif
 }
 
 int spi_find_index(mp_obj_t id) {
+    int spi_id;
     if (mp_obj_is_str(id)) {
         // given a string id
         const char *port = mp_obj_str_get_str(id);
         if (0) {
         #ifdef MICROPY_HW_SPI1_NAME
         } else if (strcmp(port, MICROPY_HW_SPI1_NAME) == 0) {
-            return 1;
+            spi_id = 1;
         #endif
         #ifdef MICROPY_HW_SPI2_NAME
         } else if (strcmp(port, MICROPY_HW_SPI2_NAME) == 0) {
-            return 2;
+            spi_id = 2;
         #endif
         #ifdef MICROPY_HW_SPI3_NAME
         } else if (strcmp(port, MICROPY_HW_SPI3_NAME) == 0) {
-            return 3;
+            spi_id = 3;
         #endif
         #ifdef MICROPY_HW_SPI4_NAME
         } else if (strcmp(port, MICROPY_HW_SPI4_NAME) == 0) {
-            return 4;
+            spi_id = 4;
         #endif
         #ifdef MICROPY_HW_SPI5_NAME
         } else if (strcmp(port, MICROPY_HW_SPI5_NAME) == 0) {
-            return 5;
+            spi_id = 5;
         #endif
         #ifdef MICROPY_HW_SPI6_NAME
         } else if (strcmp(port, MICROPY_HW_SPI6_NAME) == 0) {
-            return 6;
+            spi_id = 6;
         #endif
+        #ifdef MICROPY_HW_SUBGHZSPI_NAME
+        } else if (strcmp(port, MICROPY_HW_SUBGHZSPI_NAME) == 0) {
+            spi_id = MICROPY_HW_SUBGHZSPI_ID;
+        #endif
+        } else {
+            mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("SPI(%s) doesn't exist"), port);
         }
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError,
-            "SPI(%s) doesn't exist", port));
     } else {
         // given an integer id
-        int spi_id = mp_obj_get_int(id);
-        if (spi_id >= 1 && spi_id <= MP_ARRAY_SIZE(spi_obj)
-            && spi_obj[spi_id - 1].spi != NULL) {
-            return spi_id;
+        spi_id = mp_obj_get_int(id);
+        if (spi_id < 1 || spi_id > MP_ARRAY_SIZE(spi_obj) || spi_obj[spi_id - 1].spi == NULL) {
+            mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("SPI(%d) doesn't exist"), spi_id);
         }
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_ValueError,
-            "SPI(%d) doesn't exist", spi_id));
     }
+
+    // check if the SPI is reserved for system use or not
+    if (MICROPY_HW_SPI_IS_RESERVED(spi_id)) {
+        mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("SPI(%d) is reserved"), spi_id);
+    }
+
+    return spi_id;
 }
 
-STATIC uint32_t spi_get_source_freq(SPI_HandleTypeDef *spi) {
-    #if defined(STM32F0)
+static uint32_t spi_get_source_freq(SPI_HandleTypeDef *spi) {
+    #if defined(STM32F0) || defined(STM32G0)
     return HAL_RCC_GetPCLK1Freq();
+    #elif defined(STM32H5)
+    if (spi->Instance == SPI1) {
+        return HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI1);
+    } else if (spi->Instance == SPI2) {
+        return HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI2);
+    } else if (spi->Instance == SPI3) {
+        return HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI3);
+    } else if (spi->Instance == SPI4) {
+        return HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI4);
+    } else if (spi->Instance == SPI5) {
+        return HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI5);
+    } else {
+        return HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI6);
+    }
     #elif defined(STM32H7)
     if (spi->Instance == SPI1 || spi->Instance == SPI2 || spi->Instance == SPI3) {
         return HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI123);
@@ -197,7 +256,7 @@ STATIC uint32_t spi_get_source_freq(SPI_HandleTypeDef *spi) {
     } else {
         return HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SPI6);
     }
-    #else
+    #else // !STM32F0, !STM32G0, !STM32H
     #if defined(SPI2)
     if (spi->Instance == SPI2) {
         // SPI2 is on APB1
@@ -210,11 +269,20 @@ STATIC uint32_t spi_get_source_freq(SPI_HandleTypeDef *spi) {
         return HAL_RCC_GetPCLK1Freq();
     } else
     #endif
+    #if defined(MICROPY_HW_SUBGHZSPI_ID)
+    if (spi->Instance == SUBGHZSPI) {
+        // In STM32WL5x, SUBGHZSPI is PCLK3 which is same as HCLK3, no HCLK3->PCLK3 divider exists in clock tree
+        #if !defined(LL_APB3_GRP1_PERIPH_SUBGHZSPI)
+        #error "SPI needs updating for new SUBGHZSPI clock configuration"
+        #endif
+        return HAL_RCC_GetHCLK3Freq();
+    } else
+    #endif
     {
         // SPI1, SPI4, SPI5 and SPI6 are on APB2
         return HAL_RCC_GetPCLK2Freq();
     }
-    #endif
+    #endif // STM32F0, STM32G0, STM32H
 }
 
 // sets the parameters in the SPI_InitTypeDef struct
@@ -224,19 +292,33 @@ void spi_set_params(const spi_t *spi_obj, uint32_t prescale, int32_t baudrate,
     SPI_HandleTypeDef *spi = spi_obj->spi;
     SPI_InitTypeDef *init = &spi->Init;
 
+    #if defined(STM32H5)
+    // Enable PLL1Q output to be used as SPI clock (this is the default SPI clock source).
+    LL_RCC_PLL1Q_Enable();
+    #endif
+
     if (prescale != 0xffffffff || baudrate != -1) {
         if (prescale == 0xffffffff) {
             // prescaler not given, so select one that yields at most the requested baudrate
             prescale = (spi_get_source_freq(spi) + baudrate - 1) / baudrate;
         }
-        if (prescale <= 2) { init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2; }
-        else if (prescale <= 4) { init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4; }
-        else if (prescale <= 8) { init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8; }
-        else if (prescale <= 16) { init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16; }
-        else if (prescale <= 32) { init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32; }
-        else if (prescale <= 64) { init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64; }
-        else if (prescale <= 128) { init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128; }
-        else { init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256; }
+        if (prescale <= 2) {
+            init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+        } else if (prescale <= 4) {
+            init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+        } else if (prescale <= 8) {
+            init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+        } else if (prescale <= 16) {
+            init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+        } else if (prescale <= 32) {
+            init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+        } else if (prescale <= 64) {
+            init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+        } else if (prescale <= 128) {
+            init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
+        } else {
+            init->BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
+        }
     }
 
     if (polarity != -1) {
@@ -257,10 +339,10 @@ void spi_set_params(const spi_t *spi_obj, uint32_t prescale, int32_t baudrate,
 }
 
 // TODO allow to take a list of pins to use
-void spi_init(const spi_t *self, bool enable_nss_pin) {
+int spi_init(const spi_t *self, bool enable_nss_pin) {
     SPI_HandleTypeDef *spi = self->spi;
     uint32_t irqn = 0;
-    const pin_obj_t *pins[4] = { NULL, NULL, NULL, NULL };
+    const machine_pin_obj_t *pins[4] = { NULL, NULL, NULL, NULL };
 
     if (0) {
     #if defined(MICROPY_HW_SPI1_SCK)
@@ -279,7 +361,11 @@ void spi_init(const spi_t *self, bool enable_nss_pin) {
     #endif
     #if defined(MICROPY_HW_SPI2_SCK)
     } else if (spi->Instance == SPI2) {
+        #if defined(STM32G0)
+        irqn = SPI2_3_IRQn;
+        #else
         irqn = SPI2_IRQn;
+        #endif
         #if defined(MICROPY_HW_SPI2_NSS)
         pins[0] = MICROPY_HW_SPI2_NSS;
         #endif
@@ -293,7 +379,11 @@ void spi_init(const spi_t *self, bool enable_nss_pin) {
     #endif
     #if defined(MICROPY_HW_SPI3_SCK)
     } else if (spi->Instance == SPI3) {
+        #if defined(STM32G0)
+        irqn = SPI2_3_IRQn;
+        #else
         irqn = SPI3_IRQn;
+        #endif
         #if defined(MICROPY_HW_SPI3_NSS)
         pins[0] = MICROPY_HW_SPI3_NSS;
         #endif
@@ -347,9 +437,15 @@ void spi_init(const spi_t *self, bool enable_nss_pin) {
         // enable the SPI clock
         __HAL_RCC_SPI6_CLK_ENABLE();
     #endif
+    #if defined(MICROPY_HW_SUBGHZSPI_ID)
+    } else if (spi->Instance == SUBGHZSPI) {
+        irqn = SUBGHZSPI_IRQn;
+        // pins remain all NULL, internal bus has no GPIO mappings
+        __HAL_RCC_SUBGHZSPI_CLK_ENABLE();
+    #endif
     } else {
         // SPI does not exist for this board (shouldn't get here, should be checked by caller)
-        return;
+        return -MP_EINVAL;
     }
 
     // init the GPIO lines
@@ -365,10 +461,7 @@ void spi_init(const spi_t *self, bool enable_nss_pin) {
     // init the SPI device
     if (HAL_SPI_Init(spi) != HAL_OK) {
         // init error
-        // TODO should raise an exception, but this function is not necessarily going to be
-        // called via Python, so may not be properly wrapped in an NLR handler
-        printf("OSError: HAL_SPI_Init failed\n");
-        return;
+        return -MP_EIO;
     }
 
     // After calling HAL_SPI_Init() it seems that the DMA gets disconnected if
@@ -377,12 +470,14 @@ void spi_init(const spi_t *self, bool enable_nss_pin) {
     dma_invalidate_channel(self->tx_dma_descr);
     dma_invalidate_channel(self->rx_dma_descr);
 
-    #if defined(STM32H7)
+    #if defined(STM32H5) || defined(STM32H7)
     NVIC_SetPriority(irqn, IRQ_PRI_SPI);
     HAL_NVIC_EnableIRQ(irqn);
-    #else 
+    #else
     (void)irqn;
-    #endif 
+    #endif
+
+    return 0; // success
 }
 
 void spi_deinit(const spi_t *spi_obj) {
@@ -401,14 +496,22 @@ void spi_deinit(const spi_t *spi_obj) {
         __HAL_RCC_SPI2_FORCE_RESET();
         __HAL_RCC_SPI2_RELEASE_RESET();
         __HAL_RCC_SPI2_CLK_DISABLE();
+        #if defined(STM32G0)
+        HAL_NVIC_DisableIRQ(SPI2_3_IRQn);
+        #else
         HAL_NVIC_DisableIRQ(SPI2_IRQn);
+        #endif
     #endif
     #if defined(MICROPY_HW_SPI3_SCK)
     } else if (spi->Instance == SPI3) {
         __HAL_RCC_SPI3_FORCE_RESET();
         __HAL_RCC_SPI3_RELEASE_RESET();
         __HAL_RCC_SPI3_CLK_DISABLE();
+        #if defined(STM32G0)
+        HAL_NVIC_DisableIRQ(SPI2_3_IRQn);
+        #else
         HAL_NVIC_DisableIRQ(SPI3_IRQn);
+        #endif
     #endif
     #if defined(MICROPY_HW_SPI4_SCK)
     } else if (spi->Instance == SPI4) {
@@ -431,10 +534,27 @@ void spi_deinit(const spi_t *spi_obj) {
         __HAL_RCC_SPI6_CLK_DISABLE();
         HAL_NVIC_DisableIRQ(SPI6_IRQn);
     #endif
+    #if defined(MICROPY_HW_SUBGHZSPI_ID)
+    } else if (spi->Instance == SUBGHZSPI) {
+        __HAL_RCC_SUBGHZSPI_FORCE_RESET();
+        __HAL_RCC_SUBGHZSPI_RELEASE_RESET();
+        __HAL_RCC_SUBGHZSPI_CLK_DISABLE();
+        HAL_NVIC_DisableIRQ(SUBGHZSPI_IRQn);
+
+    #endif
     }
 }
 
-STATIC HAL_StatusTypeDef spi_wait_dma_finished(const spi_t *spi, uint32_t t_start, uint32_t timeout) {
+void spi_deinit_all(void) {
+    for (int i = 0; i < MP_ARRAY_SIZE(spi_obj); i++) {
+        const spi_t *spi = &spi_obj[i];
+        if (spi->spi != NULL && !MICROPY_HW_SPI_IS_RESERVED(i + 1) && !MICROPY_HW_SPI_IS_STATIC(i + 1)) {
+            spi_deinit(spi);
+        }
+    }
+}
+
+static HAL_StatusTypeDef spi_wait_dma_finished(const spi_t *spi, uint32_t t_start, uint32_t timeout) {
     volatile HAL_SPI_StateTypeDef *state = &spi->spi->State;
     for (;;) {
         // Do an atomic check of the state; WFI will exit even if IRQs are disabled
@@ -460,11 +580,13 @@ void spi_transfer(const spi_t *self, size_t len, const uint8_t *src, uint8_t *de
     // Note: DMA transfers are limited to 65535 bytes at a time.
 
     HAL_StatusTypeDef status;
+    void *odest = dest; // Original values of dest & len
+    size_t olen = len;
 
     if (dest == NULL) {
         // send only
         if (len == 1 || query_irq() == IRQ_STATE_DISABLED) {
-            status = HAL_SPI_Transmit(self->spi, (uint8_t*)src, len, timeout);
+            status = HAL_SPI_Transmit(self->spi, (uint8_t *)src, len, timeout);
         } else {
             DMA_HandleTypeDef tx_dma;
             dma_init(&tx_dma, self->tx_dma_descr, DMA_MEMORY_TO_PERIPH, self->spi);
@@ -474,7 +596,7 @@ void spi_transfer(const spi_t *self, size_t len, const uint8_t *src, uint8_t *de
             uint32_t t_start = HAL_GetTick();
             do {
                 uint32_t l = MIN(len, 65535);
-                status = HAL_SPI_Transmit_DMA(self->spi, (uint8_t*)src, l);
+                status = HAL_SPI_Transmit_DMA(self->spi, (uint8_t *)src, l);
                 if (status != HAL_OK) {
                     break;
                 }
@@ -502,7 +624,7 @@ void spi_transfer(const spi_t *self, size_t len, const uint8_t *src, uint8_t *de
             }
             dma_init(&rx_dma, self->rx_dma_descr, DMA_PERIPH_TO_MEMORY, self->spi);
             self->spi->hdmarx = &rx_dma;
-            MP_HAL_CLEANINVALIDATE_DCACHE(dest, len);
+            dma_protect_rx_region(dest, len);
             uint32_t t_start = HAL_GetTick();
             do {
                 uint32_t l = MIN(len, 65535);
@@ -521,11 +643,12 @@ void spi_transfer(const spi_t *self, size_t len, const uint8_t *src, uint8_t *de
                 dma_deinit(self->tx_dma_descr);
             }
             dma_deinit(self->rx_dma_descr);
+            dma_unprotect_rx_region(odest, olen);
         }
     } else {
         // send and receive
         if (len == 1 || query_irq() == IRQ_STATE_DISABLED) {
-            status = HAL_SPI_TransmitReceive(self->spi, (uint8_t*)src, dest, len, timeout);
+            status = HAL_SPI_TransmitReceive(self->spi, (uint8_t *)src, dest, len, timeout);
         } else {
             DMA_HandleTypeDef tx_dma, rx_dma;
             dma_init(&tx_dma, self->tx_dma_descr, DMA_MEMORY_TO_PERIPH, self->spi);
@@ -533,11 +656,11 @@ void spi_transfer(const spi_t *self, size_t len, const uint8_t *src, uint8_t *de
             dma_init(&rx_dma, self->rx_dma_descr, DMA_PERIPH_TO_MEMORY, self->spi);
             self->spi->hdmarx = &rx_dma;
             MP_HAL_CLEAN_DCACHE(src, len);
-            MP_HAL_CLEANINVALIDATE_DCACHE(dest, len);
+            dma_protect_rx_region(dest, len);
             uint32_t t_start = HAL_GetTick();
             do {
                 uint32_t l = MIN(len, 65535);
-                status = HAL_SPI_TransmitReceive_DMA(self->spi, (uint8_t*)src, dest, l);
+                status = HAL_SPI_TransmitReceive_DMA(self->spi, (uint8_t *)src, dest, l);
                 if (status != HAL_OK) {
                     break;
                 }
@@ -551,6 +674,7 @@ void spi_transfer(const spi_t *self, size_t len, const uint8_t *src, uint8_t *de
             } while (len);
             dma_deinit(self->tx_dma_descr);
             dma_deinit(self->rx_dma_descr);
+            dma_unprotect_rx_region(odest, olen);
         }
     }
 
@@ -563,38 +687,58 @@ void spi_print(const mp_print_t *print, const spi_t *spi_obj, bool legacy) {
     SPI_HandleTypeDef *spi = spi_obj->spi;
 
     uint spi_num = 1; // default to SPI1
-    if (0) { }
+    if (0) {
+    }
     #if defined(SPI2)
-    else if (spi->Instance == SPI2) { spi_num = 2; }
+    else if (spi->Instance == SPI2) {
+        spi_num = 2;
+    }
     #endif
     #if defined(SPI3)
-    else if (spi->Instance == SPI3) { spi_num = 3; }
+    else if (spi->Instance == SPI3) {
+        spi_num = 3;
+    }
     #endif
     #if defined(SPI4)
-    else if (spi->Instance == SPI4) { spi_num = 4; }
+    else if (spi->Instance == SPI4) {
+        spi_num = 4;
+    }
     #endif
     #if defined(SPI5)
-    else if (spi->Instance == SPI5) { spi_num = 5; }
+    else if (spi->Instance == SPI5) {
+        spi_num = 5;
+    }
     #endif
     #if defined(SPI6)
-    else if (spi->Instance == SPI6) { spi_num = 6; }
+    else if (spi->Instance == SPI6) {
+        spi_num = 6;
+    }
+    #endif
+    #if defined(MICROPY_HW_SUBGHZSPI_ID)
+    else if (spi->Instance == SUBGHZSPI) {
+        spi_num = MICROPY_HW_SUBGHZSPI_ID;
+    }
     #endif
 
     mp_printf(print, "SPI(%u", spi_num);
     if (spi->State != HAL_SPI_STATE_RESET) {
         if (spi->Init.Mode == SPI_MODE_MASTER) {
             // compute baudrate
+            #if defined(STM32H5) || defined(STM32H7)
+            uint log_prescaler = (spi->Init.BaudRatePrescaler >> 28) + 1;
+            #else
             uint log_prescaler = (spi->Init.BaudRatePrescaler >> 3) + 1;
+            #endif
             uint baudrate = spi_get_source_freq(spi) >> log_prescaler;
             if (legacy) {
-                mp_printf(print, ", SPI.MASTER");
+                mp_printf(print, ", SPI.CONTROLLER");
             }
             mp_printf(print, ", baudrate=%u", baudrate);
             if (legacy) {
                 mp_printf(print, ", prescaler=%u", 1 << log_prescaler);
             }
         } else {
-            mp_printf(print, ", SPI.SLAVE");
+            mp_printf(print, ", SPI.PERIPHERAL");
         }
         mp_printf(print, ", polarity=%u, phase=%u, bits=%u", spi->Init.CLKPolarity == SPI_POLARITY_LOW ? 0 : 1, spi->Init.CLKPhase == SPI_PHASE_1EDGE ? 0 : 1, spi->Init.DataSize == SPI_DATASIZE_8BIT ? 8 : 16);
         if (spi->Init.CRCCalculation == SPI_CRCCALCULATION_ENABLE) {
@@ -604,23 +748,41 @@ void spi_print(const mp_print_t *print, const spi_t *spi_obj, bool legacy) {
     mp_print_str(print, ")");
 }
 
+#if MICROPY_PY_MACHINE_SPI
+
 const spi_t *spi_from_mp_obj(mp_obj_t o) {
     if (mp_obj_is_type(o, &pyb_spi_type)) {
         pyb_spi_obj_t *self = MP_OBJ_TO_PTR(o);
         return self->spi;
-    } else if (mp_obj_is_type(o, &machine_hard_spi_type)) {
+    } else if (mp_obj_is_type(o, &machine_spi_type)) {
         machine_hard_spi_obj_t *self = MP_OBJ_TO_PTR(o);
         return self->spi;
     } else {
-        mp_raise_TypeError("expecting an SPI object");
+        mp_raise_TypeError(MP_ERROR_TEXT("expecting an SPI object"));
     }
 }
+
+mp_obj_base_t *mp_hal_get_spi_obj(mp_obj_t o) {
+    if (mp_obj_is_type(o, &machine_spi_type)) {
+        return MP_OBJ_TO_PTR(o);
+    }
+    #if MICROPY_PY_MACHINE_SOFTSPI
+    else if (mp_obj_is_type(o, &mp_machine_soft_spi_type)) {
+        return MP_OBJ_TO_PTR(o);
+    }
+    #endif
+    else {
+        mp_raise_TypeError(MP_ERROR_TEXT("expecting an SPI object"));
+    }
+}
+
+#endif
 
 /******************************************************************************/
 // Implementation of low-level SPI C protocol
 
-STATIC int spi_proto_ioctl(void *self_in, uint32_t cmd) {
-    spi_proto_cfg_t *self = (spi_proto_cfg_t*)self_in;
+static int spi_proto_ioctl(void *self_in, uint32_t cmd) {
+    spi_proto_cfg_t *self = (spi_proto_cfg_t *)self_in;
 
     switch (cmd) {
         case MP_SPI_IOCTL_INIT:
@@ -631,8 +793,7 @@ STATIC int spi_proto_ioctl(void *self_in, uint32_t cmd) {
             self->spi->spi->Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
             spi_set_params(self->spi, 0xffffffff, self->baudrate,
                 self->polarity, self->phase, self->bits, self->firstbit);
-            spi_init(self->spi, false);
-            break;
+            return spi_init(self->spi, false);
 
         case MP_SPI_IOCTL_DEINIT:
             spi_deinit(self->spi);
@@ -642,8 +803,8 @@ STATIC int spi_proto_ioctl(void *self_in, uint32_t cmd) {
     return 0;
 }
 
-STATIC void spi_proto_transfer(void *self_in, size_t len, const uint8_t *src, uint8_t *dest) {
-    spi_proto_cfg_t *self = (spi_proto_cfg_t*)self_in;
+static void spi_proto_transfer(void *self_in, size_t len, const uint8_t *src, uint8_t *dest) {
+    spi_proto_cfg_t *self = (spi_proto_cfg_t *)self_in;
     spi_transfer(self->spi, len, src, dest, SPI_TRANSFER_TIMEOUT(len));
 }
 

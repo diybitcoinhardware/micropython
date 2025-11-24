@@ -26,7 +26,7 @@
 #ifndef MICROPY_INCLUDED_STM32_UART_H
 #define MICROPY_INCLUDED_STM32_UART_H
 
-struct _mp_irq_obj_t;
+#include "shared/runtime/mpirq.h"
 
 typedef enum {
     PYB_UART_NONE = 0,
@@ -40,12 +40,24 @@ typedef enum {
     PYB_UART_8 = 8,
     PYB_UART_9 = 9,
     PYB_UART_10 = 10,
+    #ifdef LPUART1
+    PYB_LPUART_1 = MICROPY_HW_MAX_UART + 1,
+    #endif
+    #ifdef LPUART2
+    PYB_LPUART_2 = MICROPY_HW_MAX_UART + 2,
+    #endif
 } pyb_uart_t;
 
 #define CHAR_WIDTH_8BIT (0)
 #define CHAR_WIDTH_9BIT (1)
 
-typedef struct _pyb_uart_obj_t {
+// OR-ed IRQ flags which are allowed to be used by the user
+#define MP_UART_ALLOWED_FLAGS (UART_FLAG_IDLE | UART_FLAG_RXNE)
+
+// OR-ed IRQ flags which should not be touched by the user
+#define MP_UART_RESERVED_FLAGS UART_FLAG_RXNE
+
+typedef struct _machine_uart_obj_t {
     mp_obj_base_t base;
     USART_TypeDef *uartx;
     pyb_uart_t uart_id : 8;
@@ -62,33 +74,37 @@ typedef struct _pyb_uart_obj_t {
     byte *read_buf;                     // byte or uint16_t, depending on char size
     uint16_t mp_irq_trigger;            // user IRQ trigger mask
     uint16_t mp_irq_flags;              // user IRQ active IRQ flags
-    struct _mp_irq_obj_t *mp_irq_obj;   // user IRQ object
-} pyb_uart_obj_t;
+    mp_irq_obj_t *mp_irq_obj;           // user IRQ object
+} machine_uart_obj_t;
 
-extern const mp_obj_type_t pyb_uart_type;
+extern const mp_irq_methods_t uart_irq_methods;
 
 void uart_init0(void);
 void uart_deinit_all(void);
 bool uart_exists(int uart_id);
-bool uart_init(pyb_uart_obj_t *uart_obj,
+bool uart_init(machine_uart_obj_t *uart_obj,
     uint32_t baudrate, uint32_t bits, uint32_t parity, uint32_t stop, uint32_t flow);
-void uart_set_rxbuf(pyb_uart_obj_t *self, size_t len, void *buf);
-void uart_deinit(pyb_uart_obj_t *uart_obj);
+void uart_irq_config(machine_uart_obj_t *self, bool enable);
+void uart_set_rxbuf(machine_uart_obj_t *self, size_t len, void *buf);
+void uart_deinit(machine_uart_obj_t *uart_obj);
 void uart_irq_handler(mp_uint_t uart_id);
 
-void uart_attach_to_repl(pyb_uart_obj_t *self, bool attached);
-uint32_t uart_get_baudrate(pyb_uart_obj_t *self);
-mp_uint_t uart_rx_any(pyb_uart_obj_t *uart_obj);
-bool uart_rx_wait(pyb_uart_obj_t *self, uint32_t timeout);
-int uart_rx_char(pyb_uart_obj_t *uart_obj);
-bool uart_tx_wait(pyb_uart_obj_t *self, uint32_t timeout);
-size_t uart_tx_data(pyb_uart_obj_t *self, const void *src_in, size_t num_chars, int *errcode);
-void uart_tx_strn(pyb_uart_obj_t *uart_obj, const char *str, uint len);
+void uart_attach_to_repl(machine_uart_obj_t *self, bool attached);
+uint32_t uart_get_source_freq(machine_uart_obj_t *self);
+uint32_t uart_get_baudrate(machine_uart_obj_t *self);
+void uart_set_baudrate(machine_uart_obj_t *self, uint32_t baudrate);
 
-static inline bool uart_tx_avail(pyb_uart_obj_t *self) {
-    #if defined(STM32F4)
+mp_uint_t uart_rx_any(machine_uart_obj_t *uart_obj);
+bool uart_rx_wait(machine_uart_obj_t *self, uint32_t timeout);
+int uart_rx_char(machine_uart_obj_t *uart_obj);
+bool uart_tx_wait(machine_uart_obj_t *self, uint32_t timeout);
+size_t uart_tx_data(machine_uart_obj_t *self, const void *src_in, size_t num_chars, int *errcode);
+void uart_tx_strn(machine_uart_obj_t *uart_obj, const char *str, uint len);
+
+static inline bool uart_tx_avail(machine_uart_obj_t *self) {
+    #if defined(STM32F4) || defined(STM32L1)
     return self->uartx->SR & USART_SR_TXE;
-    #elif defined(STM32H7)
+    #elif defined(STM32G0) || defined(STM32H7) || defined(STM32WL)
     return self->uartx->ISR & USART_ISR_TXE_TXFNF;
     #else
     return self->uartx->ISR & USART_ISR_TXE;

@@ -47,9 +47,10 @@ extern const mp_obj_type_t pyb_i2c_type;
 extern const pyb_i2c_obj_t pyb_i2c_obj[4];
 
 void i2c_init0(void);
-void pyb_i2c_init(I2C_HandleTypeDef *i2c);
-void pyb_i2c_init_freq(const pyb_i2c_obj_t *self, mp_int_t freq);
+int pyb_i2c_init(I2C_HandleTypeDef *i2c);
+int pyb_i2c_init_freq(const pyb_i2c_obj_t *self, mp_int_t freq);
 uint32_t pyb_i2c_get_baudrate(I2C_HandleTypeDef *i2c);
+void pyb_i2c_deinit_all(void);
 void i2c_ev_irq_handler(mp_uint_t i2c_id);
 void i2c_er_irq_handler(mp_uint_t i2c_id);
 
@@ -61,5 +62,7 @@ int i2c_read(i2c_t *i2c, uint8_t *dest, size_t len, size_t next_len);
 int i2c_write(i2c_t *i2c, const uint8_t *src, size_t len, size_t next_len);
 int i2c_readfrom(i2c_t *i2c, uint16_t addr, uint8_t *dest, size_t len, bool stop);
 int i2c_writeto(i2c_t *i2c, uint16_t addr, const uint8_t *src, size_t len, bool stop);
+
+int i2c_find_peripheral(mp_obj_t id);
 
 #endif // MICROPY_INCLUDED_STM32_I2C_H

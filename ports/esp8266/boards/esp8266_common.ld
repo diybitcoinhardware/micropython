@@ -83,6 +83,7 @@ SECTIONS
         *libnet80211.a:(.literal.* .text.*)
         *libwpa.a:(.literal.* .text.*)
         *libwpa2.a:(.literal.* .text.*)
+        *libespnow.a:(.literal.* .text.*)
 
         /* we put some specific text in this section */
 
@@ -109,6 +110,7 @@ SECTIONS
         *py/nlr*.o*(.literal* .text*)
         *py/obj*.o*(.literal* .text*)
         *py/opmethods.o*(.literal* .text*)
+        *py/pairheap*.o*(.literal* .text*)
         *py/parse*.o*(.literal* .text*)
         *py/profile*.o*(.literal* .text*)
         *py/qstr.o*(.literal* .text*)
@@ -133,24 +135,23 @@ SECTIONS
         *lib/berkeley-db-1.xx/*.o(.literal*, .text*)
         *lib/libm/*.o*(.literal*, .text*)
         *lib/littlefs/*.o*(.literal*, .text*)
-        *lib/mp-readline/*.o(.literal*, .text*)
-        *lib/netutils/*.o*(.literal*, .text*)
-        *lib/timeutils/*.o*(.literal*, .text*)
-        *lib/utils/printf.o*(.literal*, .text*)
-        *lib/utils/sys_stdio_mphal.o*(.literal*, .text*)
-        *lib/utils/pyexec.o*(.literal*, .text*)
-        *lib/utils/stdout_helpers.o*(.literal*, .text*)
-        *lib/utils/interrupt_char.o*(.literal.mp_hal_set_interrupt_char, .text.mp_hal_set_interrupt_char)
+        *shared/libc/printf.o*(.literal*, .text*)
+        *shared/netutils/*.o*(.literal*, .text*)
+        *shared/readline/*.o(.literal*, .text*)
+        *shared/runtime/interrupt_char.o*(.literal*, .text*)
+        *shared/runtime/pyexec.o*(.literal*, .text*)
+        *shared/runtime/stdout_helpers.o*(.literal*, .text*)
+        *shared/runtime/sys_stdio_mphal.o*(.literal*, .text*)
+        *shared/timeutils/*.o*(.literal*, .text*)
         *drivers/bus/*.o(.literal* .text*)
 
-        build-*/main.o(.literal* .text*)
+        */main.o(.literal* .text*)
         *fatfs_port.o(.literal* .text*)
         *gccollect.o(.literal* .text*)
         *gchelper.o(.literal* .text*)
         *help.o(.literal* .text*)
         *lexerstr32.o(.literal* .text*)
         *utils.o(.literal* .text*)
-        *modpyb.o(.literal*, .text*)
         *machine_pin.o(.literal*, .text*)
         *machine_pwm.o(.literal*, .text*)
         *machine_rtc.o(.literal*, .text*)
@@ -160,15 +161,16 @@ SECTIONS
         *modmachine.o(.literal*, .text*)
         *machine_wdt.o(.literal*, .text*)
         *machine_spi.o(.literal*, .text*)
-        *machine_hspi.o(.literal*, .text*)
         *hspi.o(.literal*, .text*)
         *modesp.o(.literal* .text*)
-        *modnetwork.o(.literal* .text*)
-        *moduos.o(.literal* .text*)
-        *modutime.o(.literal* .text*)
+        *modespnow.o(.literal* .text*)
+        *modos.o(.literal* .text*)
         *modlwip.o(.literal* .text*)
         *modsocket.o(.literal* .text*)
         *modonewire.o(.literal* .text*)
+        *network_wlan.o(.literal* .text*)
+        *esp_mphal.o(.literal* .text*)
+        *vfs_rom_ioctl.o(.literal* .text*)
 
         /* we put as much rodata as possible in this section */
         /* note that only rodata accessed as a machine word is allowed here */
@@ -180,7 +182,7 @@ SECTIONS
         */frozen.o(.rodata.mp_frozen_content) /* frozen modules */
 
         /* for -mforce-l32 */
-        build-*/*.o(.rodata*)
+        */*.o(.rodata*)
 
         _irom0_text_end = ABSOLUTE(.);
     } >irom0_0_seg :irom0_0_phdr

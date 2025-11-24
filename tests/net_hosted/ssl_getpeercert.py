@@ -1,11 +1,14 @@
 # test ssl.getpeercert() method
 
-try:
-    import usocket as socket
-    import ussl as ssl
-except:
-    import socket
-    import ssl
+import io
+import socket
+import ssl
+
+s_test = ssl.wrap_socket(io.BytesIO(), server_side=True, do_handshake=False)
+s_test.close()
+if not hasattr(s_test, "getpeercert"):
+    print("SKIP")
+    raise SystemExit
 
 
 def test(peer_addr):
@@ -18,4 +21,4 @@ def test(peer_addr):
 
 
 if __name__ == "__main__":
-    test(socket.getaddrinfo('micropython.org', 443)[0][-1])
+    test(socket.getaddrinfo("micropython.org", 443)[0][-1])

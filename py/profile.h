@@ -28,17 +28,11 @@
 #define MICROPY_INCLUDED_PY_PROFILING_H
 
 #include "py/emitglue.h"
+#include "py/objcode.h"
 
 #if MICROPY_PY_SYS_SETTRACE
 
 #define mp_prof_is_executing MP_STATE_THREAD(prof_callback_is_executing)
-
-typedef struct _mp_obj_code_t {
-    mp_obj_base_t base;
-    const mp_raw_code_t *rc;
-    mp_obj_dict_t *dict_locals;
-    mp_obj_t lnotab;
-} mp_obj_code_t;
 
 typedef struct _mp_obj_frame_t {
     mp_obj_base_t base;
@@ -51,9 +45,9 @@ typedef struct _mp_obj_frame_t {
     bool trace_opcodes;
 } mp_obj_frame_t;
 
+uint mp_prof_bytecode_lineno(const mp_raw_code_t *rc, size_t bc);
 void mp_prof_extract_prelude(const byte *bytecode, mp_bytecode_prelude_t *prelude);
 
-mp_obj_t mp_obj_new_code(const mp_raw_code_t *rc);
 mp_obj_t mp_obj_new_frame(const mp_code_state_t *code_state);
 
 // This is the implementation for the sys.settrace
@@ -69,7 +63,7 @@ mp_obj_t mp_prof_instr_tick(mp_code_state_t *code_state, bool is_exception);
 // to be included in production/release builds.
 #define MICROPY_PROF_INSTR_DEBUG_PRINT_ENABLE 0
 #if MICROPY_PROF_INSTR_DEBUG_PRINT_ENABLE
-void mp_prof_print_instr(const byte* ip, mp_code_state_t *code_state);
+void mp_prof_print_instr(const byte *ip, mp_code_state_t *code_state);
 #define MP_PROF_INSTR_DEBUG_PRINT(current_ip) mp_prof_print_instr((current_ip), code_state)
 #else
 #define MP_PROF_INSTR_DEBUG_PRINT(current_ip)

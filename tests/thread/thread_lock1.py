@@ -30,17 +30,17 @@ print(lock.locked())
 with lock:
     print(lock.locked())
 
-# test that lock is unlocked if an error is rasied
+# test that lock is unlocked if an error is raised
 try:
     with lock:
         print(lock.locked())
         raise KeyError
 except KeyError:
-    print('KeyError')
+    print("KeyError")
     print(lock.locked())
 
 # test that we can't release an unlocked lock
 try:
     lock.release()
 except RuntimeError:
-    print('RuntimeError')
+    print("RuntimeError")

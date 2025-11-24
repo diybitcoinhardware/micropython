@@ -27,12 +27,14 @@
 #include "storage.h"
 #include "qspi.h"
 
+#if MICROPY_HW_SPIFLASH_ENABLE_CACHE
 // Shared cache for first and second SPI block devices
-STATIC mp_spiflash_cache_t spi_bdev_cache;
+static mp_spiflash_cache_t spi_bdev_cache;
+#endif
 
 // First external SPI flash uses software QSPI interface
 
-STATIC const mp_soft_qspi_obj_t soft_qspi_bus = {
+static const mp_soft_qspi_obj_t soft_qspi_bus = {
     .cs = MICROPY_HW_SPIFLASH_CS,
     .clk = MICROPY_HW_SPIFLASH_SCK,
     .io0 = MICROPY_HW_SPIFLASH_IO0,
@@ -43,9 +45,11 @@ STATIC const mp_soft_qspi_obj_t soft_qspi_bus = {
 
 const mp_spiflash_config_t spiflash_config = {
     .bus_kind = MP_SPIFLASH_BUS_QSPI,
-    .bus.u_qspi.data = (void*)&soft_qspi_bus,
+    .bus.u_qspi.data = (void *)&soft_qspi_bus,
     .bus.u_qspi.proto = &mp_soft_qspi_proto,
+    #if MICROPY_HW_SPIFLASH_ENABLE_CACHE
     .cache = &spi_bdev_cache,
+    #endif
 };
 
 spi_bdev_t spi_bdev;
@@ -56,7 +60,9 @@ const mp_spiflash_config_t spiflash2_config = {
     .bus_kind = MP_SPIFLASH_BUS_QSPI,
     .bus.u_qspi.data = NULL,
     .bus.u_qspi.proto = &qspi_proto,
+    #if MICROPY_HW_SPIFLASH_ENABLE_CACHE
     .cache = &spi_bdev_cache,
+    #endif
 };
 
 spi_bdev_t spi_bdev2;

@@ -1,8 +1,6 @@
 try:
-    try:
-        import umachine as machine
-    except ImportError:
-        import machine
+    import machine
+
     machine.PinBase
     machine.time_pulse_us
 except:
@@ -11,7 +9,6 @@ except:
 
 
 class ConstPin(machine.PinBase):
-
     def __init__(self, value):
         self.v = value
 
@@ -23,7 +20,6 @@ class ConstPin(machine.PinBase):
 
 
 class TogglePin(machine.PinBase):
-
     def __init__(self):
         self.v = 0
 

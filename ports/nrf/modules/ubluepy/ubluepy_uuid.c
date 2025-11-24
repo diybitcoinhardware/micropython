@@ -34,7 +34,7 @@
 #include "modubluepy.h"
 #include "ble_drv.h"
 
-STATIC void ubluepy_uuid_print(const mp_print_t *print, mp_obj_t o, mp_print_kind_t kind) {
+static void ubluepy_uuid_print(const mp_print_t *print, mp_obj_t o, mp_print_kind_t kind) {
     ubluepy_uuid_obj_t * self = (ubluepy_uuid_obj_t *)o;
     if (self->type == UBLUEPY_UUID_16_BIT) {
         mp_printf(print, "UUID(uuid: 0x" HEX2_FMT HEX2_FMT ")",
@@ -45,7 +45,7 @@ STATIC void ubluepy_uuid_print(const mp_print_t *print, mp_obj_t o, mp_print_kin
     }
 }
 
-STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
+static mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
 
     enum { ARG_NEW_UUID };
 
@@ -57,8 +57,7 @@ STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, 
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
-    ubluepy_uuid_obj_t *s = m_new_obj(ubluepy_uuid_obj_t);
-    s->base.type = type;
+    ubluepy_uuid_obj_t *s = mp_obj_malloc(ubluepy_uuid_obj_t, type);
 
     mp_obj_t uuid_obj = args[ARG_NEW_UUID].u_obj;
 
@@ -71,7 +70,8 @@ STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, 
         s->value[1] = (((uint16_t)mp_obj_get_int(uuid_obj)) >> 8) & 0xFF;
         s->value[0] = ((uint8_t)mp_obj_get_int(uuid_obj)) & 0xFF;
     } else if (mp_obj_is_str(uuid_obj)) {
-        GET_STR_DATA_LEN(uuid_obj, str_data, str_len);
+        size_t str_len;
+        const byte *str_data = (const byte *)mp_obj_str_get_data(uuid_obj, &str_len);
         if (str_len == 6) { // Assume hex digit prefixed with 0x
             s->type = UBLUEPY_UUID_16_BIT;
             s->value[0]  = unichar_xdigit_value(str_data[5]);
@@ -122,7 +122,7 @@ STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, 
 
             ble_drv_uuid_add_vs(buffer, &s->uuid_vs_idx);
         } else {
-            mp_raise_ValueError("Invalid UUID string length");
+            mp_raise_ValueError(MP_ERROR_TEXT("Invalid UUID string length"));
         }
     } else if (mp_obj_is_type(uuid_obj, &ubluepy_uuid_type)) {
         // deep copy instance
@@ -131,7 +131,7 @@ STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, 
         s->value[0] = p_old->value[0];
         s->value[1] = p_old->value[1];
     } else {
-        mp_raise_ValueError("Invalid UUID parameter");
+        mp_raise_ValueError(MP_ERROR_TEXT("Invalid UUID parameter"));
     }
 
     return MP_OBJ_FROM_PTR(s);
@@ -140,7 +140,7 @@ STATIC mp_obj_t ubluepy_uuid_make_new(const mp_obj_type_t *type, size_t n_args, 
 /// \method binVal()
 /// Get binary value of the 16 or 128 bit UUID. Returned as bytearray type.
 ///
-STATIC mp_obj_t uuid_bin_val(mp_obj_t self_in) {
+static mp_obj_t uuid_bin_val(mp_obj_t self_in) {
     ubluepy_uuid_obj_t * self = MP_OBJ_TO_PTR(self_in);
 
     // TODO: Extend the uint16 byte value to 16 byte if 128-bit,
@@ -148,9 +148,9 @@ STATIC mp_obj_t uuid_bin_val(mp_obj_t self_in) {
     //       the uint16_t field of the UUID.
     return MP_OBJ_NEW_SMALL_INT(self->value[0] | self->value[1] << 8);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(ubluepy_uuid_bin_val_obj, uuid_bin_val);
+static MP_DEFINE_CONST_FUN_OBJ_1(ubluepy_uuid_bin_val_obj, uuid_bin_val);
 
-STATIC const mp_rom_map_elem_t ubluepy_uuid_locals_dict_table[] = {
+static const mp_rom_map_elem_t ubluepy_uuid_locals_dict_table[] = {
 #if 0
     { MP_ROM_QSTR(MP_QSTR_getCommonName), MP_ROM_PTR(&ubluepy_uuid_get_common_name_obj) },
 #endif
@@ -158,14 +158,15 @@ STATIC const mp_rom_map_elem_t ubluepy_uuid_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_binVal), MP_ROM_PTR(&ubluepy_uuid_bin_val_obj) },
 };
 
-STATIC MP_DEFINE_CONST_DICT(ubluepy_uuid_locals_dict, ubluepy_uuid_locals_dict_table);
+static MP_DEFINE_CONST_DICT(ubluepy_uuid_locals_dict, ubluepy_uuid_locals_dict_table);
 
-const mp_obj_type_t ubluepy_uuid_type = {
-    { &mp_type_type },
-    .name = MP_QSTR_UUID,
-    .print = ubluepy_uuid_print,
-    .make_new = ubluepy_uuid_make_new,
-    .locals_dict = (mp_obj_dict_t*)&ubluepy_uuid_locals_dict
-};
+MP_DEFINE_CONST_OBJ_TYPE(
+    ubluepy_uuid_type,
+    MP_QSTR_UUID,
+    MP_TYPE_FLAG_NONE,
+    make_new, ubluepy_uuid_make_new,
+    print, ubluepy_uuid_print,
+    locals_dict, &ubluepy_uuid_locals_dict
+    );
 
 #endif // MICROPY_PY_UBLUEPY

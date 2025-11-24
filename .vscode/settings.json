@@ -1,0 +1,8 @@
+{
+  "esbonio.server.enabled": false,
+  "files.associations": {
+    "mpconfigboard_common.h": "c",
+    "locale": "c",
+    "ostream": "c"
+  }
+}

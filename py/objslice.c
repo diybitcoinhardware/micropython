@@ -34,7 +34,7 @@
 
 #if MICROPY_PY_BUILTINS_SLICE
 
-STATIC void slice_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kind_t kind) {
+static void slice_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kind_t kind) {
     (void)kind;
     mp_obj_slice_t *o = MP_OBJ_TO_PTR(o_in);
     mp_print_str(print, "slice(");
@@ -46,9 +46,15 @@ STATIC void slice_print(const mp_print_t *print, mp_obj_t o_in, mp_print_kind_t 
     mp_print_str(print, ")");
 }
 
+static mp_obj_t slice_unary_op(mp_unary_op_t op, mp_obj_t o_in) {
+    // Needed to explicitly opt out of default __hash__.
+    // REVISIT: CPython implements comparison operators for slice.
+    return MP_OBJ_NULL;
+}
+
 #if MICROPY_PY_BUILTINS_SLICE_INDICES
-STATIC mp_obj_t slice_indices(mp_obj_t self_in, mp_obj_t length_obj) {
-    mp_int_t length = mp_obj_int_get_checked(length_obj);
+static mp_obj_t slice_indices(mp_obj_t self_in, mp_obj_t length_obj) {
+    mp_int_t length = mp_obj_get_int(length_obj);
     mp_bound_slice_t bound_indices;
     mp_obj_slice_indices(self_in, length, &bound_indices);
 
@@ -59,11 +65,11 @@ STATIC mp_obj_t slice_indices(mp_obj_t self_in, mp_obj_t length_obj) {
     };
     return mp_obj_new_tuple(3, results);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_2(slice_indices_obj, slice_indices);
+static MP_DEFINE_CONST_FUN_OBJ_2(slice_indices_obj, slice_indices);
 #endif
 
 #if MICROPY_PY_BUILTINS_SLICE_ATTRS
-STATIC void slice_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
+static void slice_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
     if (dest[0] != MP_OBJ_NULL) {
         // not load attribute
         return;
@@ -86,26 +92,31 @@ STATIC void slice_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
 #endif
 
 #if MICROPY_PY_BUILTINS_SLICE_INDICES && !MICROPY_PY_BUILTINS_SLICE_ATTRS
-STATIC const mp_rom_map_elem_t slice_locals_dict_table[] = {
+static const mp_rom_map_elem_t slice_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_indices), MP_ROM_PTR(&slice_indices_obj) },
 };
-STATIC MP_DEFINE_CONST_DICT(slice_locals_dict, slice_locals_dict_table);
+static MP_DEFINE_CONST_DICT(slice_locals_dict, slice_locals_dict_table);
 #endif
 
-const mp_obj_type_t mp_type_slice = {
-    { &mp_type_type },
-    .name = MP_QSTR_slice,
-    .print = slice_print,
 #if MICROPY_PY_BUILTINS_SLICE_ATTRS
-    .attr = slice_attr,
+#define SLICE_TYPE_ATTR_OR_LOCALS_DICT attr, slice_attr,
 #elif MICROPY_PY_BUILTINS_SLICE_INDICES
-    .locals_dict = (mp_obj_dict_t*)&slice_locals_dict,
+#define SLICE_TYPE_ATTR_OR_LOCALS_DICT locals_dict, &slice_locals_dict,
+#else
+#define SLICE_TYPE_ATTR_OR_LOCALS_DICT
 #endif
-};
+
+MP_DEFINE_CONST_OBJ_TYPE(
+    mp_type_slice,
+    MP_QSTR_slice,
+    MP_TYPE_FLAG_NONE,
+    unary_op, slice_unary_op,
+    SLICE_TYPE_ATTR_OR_LOCALS_DICT
+    print, slice_print
+    );
 
 mp_obj_t mp_obj_new_slice(mp_obj_t ostart, mp_obj_t ostop, mp_obj_t ostep) {
-    mp_obj_slice_t *o = m_new_obj(mp_obj_slice_t);
-    o->base.type = &mp_type_slice;
+    mp_obj_slice_t *o = mp_obj_malloc(mp_obj_slice_t, &mp_type_slice);
     o->start = ostart;
     o->stop = ostop;
     o->step = ostep;
@@ -124,7 +135,7 @@ void mp_obj_slice_indices(mp_obj_t self_in, mp_int_t length, mp_bound_slice_t *r
     } else {
         step = mp_obj_get_int(self->step);
         if (step == 0) {
-            mp_raise_ValueError("slice step cannot be zero");
+            mp_raise_ValueError(MP_ERROR_TEXT("slice step can't be zero"));
         }
     }
 
